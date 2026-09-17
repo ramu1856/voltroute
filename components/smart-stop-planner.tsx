@@ -24,10 +24,10 @@ export function SmartStopPlanner({origin,destination,profile,battery,now,reports
   const [result,setResult]=useState<SmartStopResult|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const request=useRef<AbortController|null>(null),clear=useRef(onClear);
   useEffect(()=>{clear.current=onClear;},[onClear]);
-  useEffect(()=>{setCapacity('');setMaxKW('');},[profile.name,profile.connector]);
+  useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){setCapacity('');setMaxKW('');}});return()=>{cancelled=true;};},[profile.name,profile.connector]);
   const input={origin,destination,profile,battery,reserve:Number(reserve),maxDetourMinutes:Number(detour),batteryCapacity:capacity.trim()===''?null:Number(capacity),vehicleMaxKW:maxKW.trim()===''?null:Number(maxKW),noStranding,failureAllowance:Number(failureAllowance),failureDelayMinutes:failureDelay.trim()===''?NaN:Number(failureDelay),preference,enteredRates:Object.fromEntries(Object.entries(enteredRates).filter(([,rate])=>rate.trim()!=='').sort(([a],[b])=>a.localeCompare(b)))};
   const inputKey=JSON.stringify(input),valid=smartStopSchema.safeParse(input).success;
-  useEffect(()=>{request.current?.abort();setResult(null);setBusy(false);setError('');clear.current();},[inputKey,reportsVersion]);
+  useEffect(()=>{request.current?.abort();let cancelled=false;queueMicrotask(()=>{if(!cancelled){setResult(null);setBusy(false);setError('');clear.current();}});return()=>{cancelled=true;};},[inputKey,reportsVersion]);
   useEffect(()=>()=>request.current?.abort(),[]);
   async function calculate(){
     if(!valid)return;
@@ -42,12 +42,13 @@ export function SmartStopPlanner({origin,destination,profile,battery,now,reports
     }catch(error){if(!controller.signal.aborted)setError((error as Error).message);}
     finally{if(!controller.signal.aborted)setBusy(false);}
   }
+  const currentTime=now??0;
   const selected=result?.selected;
   const backup=selected?.backup;
-  const currentAvailability=selected?evaluateAvailability(selected.station,selected.personalReport||undefined,now??Date.now()):null;
-  const backupAvailability=backup?evaluateAvailability(backup.station,backup.personalReport||undefined,now??Date.now()):null;
-  const backupHours=backup?evaluateStationHours(backup.station,new Date((now??Date.now())+(backup.totalDriveMinutes+backup.failureDelayMinutes)*60_000)):null;
-  const expired=!!result&&isSmartStopExpired(result,now??Date.now());
+  const currentAvailability=selected?evaluateAvailability(selected.station,selected.personalReport||undefined,currentTime):null;
+  const backupAvailability=backup?evaluateAvailability(backup.station,backup.personalReport||undefined,currentTime):null;
+  const backupHours=backup?evaluateStationHours(backup.station,new Date(currentTime+(backup.totalDriveMinutes+backup.failureDelayMinutes)*60_000)):null;
+  const expired=!!result&&isSmartStopExpired(result,currentTime);
   useEffect(()=>{if(expired)clear.current();},[expired]);
   return <section className="smart-planner" aria-label="Smart Stop planner">
     <div className="smart-title"><span><Zap size={19}/></span><div><h2>Smart Stop</h2><p>Find your next charging stop. Departing now.</p></div></div>
@@ -94,7 +95,7 @@ export function SmartStopPlanner({origin,destination,profile,battery,now,reports
         <details className="smart-assumptions"><summary>Before using this stop</summary><ul>{selected.warnings.map(warning=><li key={warning}>{warning}</li>)}</ul></details>
         <p className="smart-note">{projectStopEnergy(selected,result.input).reachesDestination?'One planned charge can cover the remaining route if its target is reached. The backup is a separate failure scenario.':'Next stop only. Further charging stops and the trip after the backup have not been planned.'}</p>
       </>:<div className={`smart-outcome ${result.state==='no-charge-needed'?'no-charge':'needs-review'}`}><strong>{result.state==='no-charge-needed'?'No charging stop needed under these assumptions':result.state==='reserve-too-low'?'Charge before driving':result.state==='no-backup-confirmed'?'No backup confirmed: suggestion withheld':result.state==='preference-unavailable'?'Comparison unavailable for this preference':'No suitable stop confirmed'}</strong><p>{result.message}</p>{result.state==='no-charge-needed'&&<p>Your entered range may change with weather, elevation, traffic and battery condition.</p>}</div>}
-      <RouteComparison result={result} now={now??Date.now()} onSelect={next=>{setResult(next);onResult(next);}}/>
+      <RouteComparison result={result} now={currentTime} onSelect={next=>{setResult(next);onResult(next);}}/>
       {result.roadCheckedCount>0&&<details className="smart-coverage"><summary>Search coverage & excluded stops</summary><p>{result.mappedCount} mapped stations returned; {result.roadCheckedCount} shortlisted for road-distance checks. The search covers approximately a 10-mile corridor along the reachable first part of the route, up to 400 records and 16 road comparisons. Coverage is incomplete.</p>{Object.entries(result.excluded).length>0&&<ul>{Object.entries(result.excluded).map(([reason,count])=><li key={reason}>{exclusionLabels[reason]||reason}: {count}</li>)}</ul>}</details>}
       <p className="smart-timestamp">Calculated {evidenceTime(result.calculatedAt)}{result.directoryFetchedAt&&<><br/>Directory retrieved {evidenceTime(result.directoryFetchedAt)}</>}</p>
     </div>}
