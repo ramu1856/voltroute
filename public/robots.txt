@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /signout-with-chatgpt
+
+Sitemap: https://voltroutes.com/sitemap.xml
