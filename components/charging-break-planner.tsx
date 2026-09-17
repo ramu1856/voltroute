@@ -7,7 +7,7 @@ import { breakActivities, planBreak, type BreakActivity } from '@/lib/charging-b
 
 export function ChargingBreakPlanner({station,places,plan,now,loading,error,stale}:{station:Station;places:Amenity[];plan:SmartStopResult|null;now:number|null;loading:boolean;error:string;stale:boolean}){
  const [activity,setActivity]=useState<BreakActivity>('coffee'),[visit,setVisit]=useState('10'),[manual,setManual]=useState('');
- const current=plan?.selected?.station.id===station.id&&!isSmartStopExpired(plan,now??Date.now())?plan:null;
+ const current=plan?.selected?.station.id===station.id&&!isSmartStopExpired(plan,now??0)?plan:null;
  const estimate=current?.selected?.chargeMinutes??null;
  const window=manual.trim()===''?estimate:Number(manual);
  const arrival=current&&now!==null?now+current.selected!.legs.toMinutes*60000:now??NaN;
