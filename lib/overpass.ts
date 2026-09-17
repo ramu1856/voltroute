@@ -4,8 +4,8 @@ import { ServiceError } from './service-error.ts';
 // Both operators publish global OSM coverage and allow use by small projects.
 // Keep these independent: alternate hostnames of one service are not a backup.
 export const directoryProviders = [
-  'https://overpass.private.coffee/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
 ] as const;
 
 export function overpassEndpoints(settings: Record<string, string | undefined>) {
@@ -33,8 +33,8 @@ export async function fetchOverpass(query: string, options: OverpassOptions = {}
     try {
       const response = await (options.fetcher || fetch)(endpoint, {
         method: 'POST', body: new URLSearchParams({ data: query }),
-        headers: { Accept: 'application/json', 'User-Agent': 'VoltRoute/2.0 (+https://voltroute-ev.chirumamillaramu1999.chatgpt.site)' },
-        signal: AbortSignal.timeout(options.timeoutMs ?? 24000),
+        headers: { Accept: 'application/json', 'User-Agent': 'VoltRoute/2.0 (+https://voltroutes.com)' },
+        signal: AbortSignal.timeout(options.timeoutMs ?? 11000),
       });
       // Do not rotate providers to work around access restrictions or quotas.
       if (response.status === 429 || response.status === 406) throw new ServiceError('The directory service is busy. Please wait at least 30 seconds before retrying.', 429);
