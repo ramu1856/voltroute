@@ -21,8 +21,8 @@ export async function GET(request:Request) {
     const radius=action==='stations'?z.coerce.number().min(160934).max(402336).parse(q.get('radius')||'160934'):805;
     const lat=Number(point.lat.toFixed(4)),lon=Number(point.lon.toFixed(4));
     const area=`(around:${radius},${lat},${lon})`;
-    const query=action==='stations'?`[out:json][timeout:20][maxsize:67108864];nwr[amenity=charging_station]${area};out center meta 300;`:`[out:json][timeout:18];(nwr[amenity~"^(restaurant|cafe|fast_food|food_court|toilets)$"]${area};nwr[toilets=yes]${area};nwr[shop~"^(supermarket|convenience|mall|department_store)$"]${area};);out center tags;`;
-    const result=await cachedDirectory(`${action}:${action==='amenities'?'v5':'v4'}:${lat}:${lon}:${radius}`,async()=>{
+    const query=action==='stations'?`[out:json][timeout:12][maxsize:67108864];nwr[amenity=charging_station]${area};out center tags 300 qt;`:`[out:json][timeout:10];(nwr[amenity~"^(restaurant|cafe|fast_food|food_court|toilets)$"]${area};nwr[toilets=yes]${area};nwr[shop~"^(supermarket|convenience|mall|department_store)$"]${area};);out center tags qt;`;
+    const result=await cachedDirectory(`${action}:${action==='amenities'?'v6':'v5'}:${lat}:${lon}:${radius}`,async()=>{
       const elements=await fetchOverpass(query,{endpoints:overpassEndpoints(settings)});
       return action==='stations'?elements.map(e=>normalizeStation(e,point)).filter(Boolean).sort((a,b)=>a!.distance-b!.distance).slice(0,250):normalizeAmenities(elements,point);
     });return Response.json(result,{headers:{'Cache-Control':'private, no-store'}});
