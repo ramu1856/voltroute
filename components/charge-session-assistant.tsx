@@ -7,7 +7,7 @@ const empty={capacity:'',from:'',target:'80',averageKW:'',idleRate:'',graceMinut
 type Active={estimate:SessionEstimate;stationName:string;stationId:string;vehicleName:string;finishedAt:number|null};
 export function ChargeSessionAssistant({station,vehicleName,enteredRate}:{station:Station|null;vehicleName:string;enteredRate:string}){
  const [fields,setFields]=useState(empty),[started,setStarted]=useState(false),[active,setActive]=useState<Active|null>(null),[now,setNow]=useState<number|null>(null),[error,setError]=useState('');
- useEffect(()=>{if(!active){setFields(empty);setStarted(false);setError('');}},[station?.id,vehicleName,active]);
+ useEffect(()=>{if(active)return;let cancelled=false;queueMicrotask(()=>{if(!cancelled){setFields(empty);setStarted(false);setError('');}});return()=>{cancelled=true;};},[station?.id,vehicleName,active]);
  useEffect(()=>{if(!active)return;const tick=()=>setNow(Date.now());tick();const timer=window.setInterval(tick,1000);window.addEventListener('focus',tick);document.addEventListener('visibilitychange',tick);return()=>{window.clearInterval(timer);window.removeEventListener('focus',tick);document.removeEventListener('visibilitychange',tick);};},[active]);
  const clock=active&&now!==null?sessionClock(active.estimate,active.finishedAt,now):null;
  if(!station&&!active)return null;
