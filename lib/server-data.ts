@@ -36,7 +36,7 @@ export async function cachedDirectory<T>(key:string,loader:()=>Promise<T>) {
 }
 export async function fetchJson(url:string,options:RequestInit={}) {
   try {
-    const response=await fetch(url,{...options,headers:{'User-Agent':'VoltRoute/2.0 (+https://voltroute-ev.chirumamillaramu1999.chatgpt.site)','Accept':'application/json',...options.headers},signal:AbortSignal.timeout(22000)});
+    const response=await fetch(url,{...options,headers:{'User-Agent':'VoltRoute/2.0 (+https://voltroutes.com)','Accept':'application/json',...options.headers},signal:AbortSignal.timeout(22000)});
     if(!response.ok) throw new ServiceError(`The map data provider is unavailable (${response.status}). Please try again later.`,response.status===429?429:503);
     return await response.json();
   } catch(error) {if(error instanceof ServiceError)throw error;throw new ServiceError('The map data provider did not respond. Please try again later.');}
