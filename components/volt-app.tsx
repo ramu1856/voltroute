@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { Zap, LocateFixed, Search, Navigation, Utensils, Toilet, Bookmark, Route, Car, ArrowRight, MapPin, X, AlertTriangle, Clock3, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -34,7 +35,7 @@ function stationLookup(s:Station){return `https://www.google.com/maps/search/?ap
 function PlacePicker({label,value,onSelect}:{label:string;value:Point;onSelect:(p:Point)=>void}){
  const [q,setQ]=useState(value.label),[places,setPlaces]=useState<Point[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const revision=useRef(0);
- useEffect(()=>{setQ(value.label);setPlaces([]);revision.current++;},[value]);
+ useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){setQ(value.label);setPlaces([]);revision.current++;}});return()=>{cancelled=true;};},[value]);
  async function search(){const id=++revision.current;setBusy(true);setError('');try{const r=await api<{data:Point[]}>(`/api/explore?action=search&q=${encodeURIComponent(q)}`);if(id!==revision.current)return;setPlaces(r.data);if(!r.data.length)setError('No US location found. Try a city and state.');}catch(e){if(id===revision.current)setError((e as Error).message);}finally{if(id===revision.current)setBusy(false);}}
  return <div className="place-picker"><label>{label}<div className="place-input"><input value={q} maxLength={160} onChange={e=>setQ(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();void search();}}}/><Button type="button" variant="ghost" size="icon" disabled={busy||q.trim().length<2} aria-label={`Search ${label}`} onClick={search}><Search/></Button></div></label>
   <small>{busy?'Searching…':`Selected: ${value.label}`}</small>{error&&<p className="error-text" role="alert">{error}</p>}
@@ -56,10 +57,11 @@ export default function VoltApp({signedIn,signInUrl}:{signedIn:boolean;signInUrl
  const [saving,setSaving]=useState(false),[amenityRetry,setAmenityRetry]=useState(0),[locating,setLocating]=useState(false);
  const [enteredRates,setEnteredRates]=useState<Record<string,string>>({}),[emergency,setEmergency]=useState(false),[reports,setReports]=useState<Record<string,DriverReport>>({});
  const [openNow,setOpenNow]=useState(false),[allDay,setAllDay]=useState(false),[hoursClock,setHoursClock]=useState<number|null>(null);
- const tripAssessment=useMemo(()=>smartPlan?assessTrip(smartPlan,hoursClock??Date.now()):null,[smartPlan,hoursClock]);
- useEffect(()=>{setFocusedRisk(null);},[smartPlan]);
+ const currentTime=hoursClock??0;
+ const tripAssessment=useMemo(()=>smartPlan?assessTrip(smartPlan,currentTime):null,[smartPlan,currentTime]);
+ useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled)setFocusedRisk(null);});return()=>{cancelled=true;};},[smartPlan]);
  const requestId=useRef(0),routeId=useRef(0);
- const stationRequest=useRef<AbortController|null>(null);
+ const stationRequest=useRef<AbortController|null>(null),loadStationsRef=useRef(loadStations),loadAccountRef=useRef(loadAccount);
  useEffect(()=>()=>stationRequest.current?.abort(),[]);
  useEffect(()=>{const tick=()=>setHoursClock(Date.now());tick();const timer=window.setInterval(tick,30000);window.addEventListener('focus',tick);document.addEventListener('visibilitychange',tick);return()=>{window.clearInterval(timer);window.removeEventListener('focus',tick);document.removeEventListener('visibilitychange',tick);};},[]);
  const stationHours=useMemo(
@@ -78,14 +80,15 @@ export default function VoltApp({signedIn,signInUrl}:{signedIn:boolean;signInUrl
   catch(e){if(id===requestId.current&&!controller.signal.aborted)setError((e as Error).message);}
   finally{if(id===requestId.current&&!controller.signal.aborted)setLoading(false);}
  }
- useEffect(()=>{if(signedIn){void loadAccount().then(items=>{const p=items.find(i=>i.kind==='profile');if(p){const savedProfile=p.payload as Profile;setProfile(savedProfile);const match=vehicleCatalog.find(v=>v.name===savedProfile.name);if(match){setVehicleType(match.type);setVehicleMake(match.make);setVehicleModel(match.model);setCustomVehicle(false);}else setCustomVehicle(true);}});void loadStations(chicago);}},[signedIn]);
- useEffect(()=>{const controller=new AbortController();setAmenities([]);setAmenityError('');setAmenityNotice('');setAmenityFetchedAt('');if(!selected){setAmenitiesLoading(false);return;}
-  setAmenitiesLoading(true);api<DirectorySnapshot<Amenity[]>>(`/api/explore?action=amenities&lat=${selected.lat}&lon=${selected.lon}`,{signal:controller.signal}).then(r=>{if(!controller.signal.aborted){setAmenities(r.data);setAmenityNotice(r.notice||'');setAmenityFetchedAt(r.fetchedAt);}}).catch(e=>{if(!controller.signal.aborted)setAmenityError(e.message);}).finally(()=>{if(!controller.signal.aborted)setAmenitiesLoading(false);});return()=>controller.abort();
- },[selected?.id,amenityRetry]);
- useEffect(()=>{routeId.current++;setRoad(null);setSmartPlan(null);setTripSnapshot(null);setRouteError('');setRouteBusy(false);},[origin,destination,profile,battery]);
- useEffect(()=>{if(smartPlan&&isSmartStopExpired(smartPlan,hoursClock??Date.now()))setSmartPlan(null);},[smartPlan,hoursClock]);
- useEffect(()=>{setSmartPlan(null);},[reports,enteredRates]);
- useEffect(()=>{if((selected&&!visible.some(s=>s.id===selected.id))||(!selected&&visible.length))setSelected(visible[0]||null);},[visible,selected]);
+ useEffect(()=>{loadStationsRef.current=loadStations;loadAccountRef.current=loadAccount;});
+ useEffect(()=>{if(!signedIn)return;let cancelled=false;queueMicrotask(()=>{if(cancelled)return;void loadAccountRef.current().then(items=>{if(cancelled)return;const p=items.find(i=>i.kind==='profile');if(p){const savedProfile=p.payload as Profile;setProfile(savedProfile);const match=vehicleCatalog.find(v=>v.name===savedProfile.name);if(match){setVehicleType(match.type);setVehicleMake(match.make);setVehicleModel(match.model);setCustomVehicle(false);}else setCustomVehicle(true);}});void loadStationsRef.current(chicago);});return()=>{cancelled=true;};},[signedIn]);
+ const selectedId=selected?.id,selectedLat=selected?.lat,selectedLon=selected?.lon;
+ useEffect(()=>{const controller=new AbortController();void Promise.resolve().then(async()=>{if(controller.signal.aborted)return;setAmenities([]);setAmenityError('');setAmenityNotice('');setAmenityFetchedAt('');if(!selectedId){setAmenitiesLoading(false);return;}setAmenitiesLoading(true);try{const r=await api<DirectorySnapshot<Amenity[]>>(`/api/explore?action=amenities&lat=${selectedLat}&lon=${selectedLon}`,{signal:controller.signal});if(!controller.signal.aborted){setAmenities(r.data);setAmenityNotice(r.notice||'');setAmenityFetchedAt(r.fetchedAt);}}catch(e){if(!controller.signal.aborted)setAmenityError((e as Error).message);}finally{if(!controller.signal.aborted)setAmenitiesLoading(false);}});return()=>controller.abort();
+ },[selectedId,selectedLat,selectedLon,amenityRetry]);
+ useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.current++;setRoad(null);setSmartPlan(null);setTripSnapshot(null);setRouteError('');setRouteBusy(false);}});return()=>{cancelled=true;};},[origin,destination,profile,battery]);
+ useEffect(()=>{if(!smartPlan||!isSmartStopExpired(smartPlan,currentTime))return;let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSmartPlan(null);});return()=>{cancelled=true;};},[smartPlan,currentTime]);
+ useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSmartPlan(null);});return()=>{cancelled=true;};},[reports,enteredRates]);
+ useEffect(()=>{if(!((selected&&!visible.some(s=>s.id===selected.id))||(!selected&&visible.length)))return;let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSelected(visible[0]||null);});return()=>{cancelled=true;};},[visible,selected]);
  async function locate(){if(!navigator.geolocation){toast.error('Your browser does not support location. Search a city instead.');return;}setLocating(true);navigator.geolocation.getCurrentPosition(p=>{const point={lat:Number(p.coords.latitude.toFixed(4)),lon:Number(p.coords.longitude.toFixed(4)),label:'Current location'};setOrigin(point);void loadStations(point);setLocating(false);},()=>{setLocating(false);toast.error('Location was not shared. You can search a city instead.');},{timeout:12000,maximumAge:60000});}
  function showSmartStop(result:SmartStopResult,view:'main'|'backup'='main'){
   stationRequest.current?.abort();
@@ -112,12 +115,12 @@ export default function VoltApp({signedIn,signInUrl}:{signedIn:boolean;signInUrl
   const context=(document as Document&{modelContext?:{registerTool:(tool:Record<string,unknown>,options?:{signal?:AbortSignal})=>void|Promise<void>}}).modelContext;
   if(!context?.registerTool)return;const lifecycle=new AbortController();
   const register=(tool:Record<string,unknown>)=>{try{void Promise.resolve(context.registerTool(tool,{signal:lifecycle.signal})).catch(()=>undefined);}catch{}}
-  register({name:'find_chargers_near',title:'Find EV chargers',description:'Search mapped EV charging stations near exact US coordinates and update the visible map.',inputSchema:{type:'object',properties:{lat:{type:'number',minimum:-90,maximum:90},lon:{type:'number',minimum:-180,maximum:180},label:{type:'string',minLength:1,maxLength:200}},required:['lat','lon','label'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute(input:unknown){const p=input as Point;if(typeof p.lat!=='number'||typeof p.lon!=='number'||typeof p.label!=='string')throw new Error('Valid coordinates and label are required');setOrigin(p);void loadStations(p);return{searchStarted:true,center:p};}});
+  register({name:'find_chargers_near',title:'Find EV chargers',description:'Search mapped EV charging stations near exact US coordinates and update the visible map.',inputSchema:{type:'object',properties:{lat:{type:'number',minimum:-90,maximum:90},lon:{type:'number',minimum:-180,maximum:180},label:{type:'string',minLength:1,maxLength:200}},required:['lat','lon','label'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute(input:unknown){const p=input as Point;if(typeof p.lat!=='number'||typeof p.lon!=='number'||typeof p.label!=='string')throw new Error('Valid coordinates and label are required');setOrigin(p);void loadStationsRef.current(p);return{searchStarted:true,center:p};}});
   register({name:'set_vehicle_profile',title:'Set EV profile',description:'Set the vehicle name, connector and full-battery range used for matching and trip estimates.',inputSchema:{type:'object',properties:{name:{type:'string',minLength:1,maxLength:80},connector:{type:'string',enum:['NACS','CCS1','J1772','CHAdeMO']},range:{type:'number',minimum:30,maximum:600}},required:['name','connector','range'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute(input:unknown){const p=input as Profile;if(!p.name||!['NACS','CCS1','J1772','CHAdeMO'].includes(p.connector)||p.range<30||p.range>600)throw new Error('Valid vehicle details are required');setProfile(p);return{updated:true,profile:p};}});
   return()=>lifecycle.abort();
  },[]);
  return <main className="vr-app"><Toaster richColors position="bottom-center"/>
-  <header className="topbar"><a href="/" className="brand"><span className="brand-mark"><Zap/></span>VoltRoute <small className="beta">BETA</small></a><div className="account-nav">{signedIn?<><span>{account||'Signed in'}</span><a href="/signout-with-chatgpt?return_to=%2F" target="_top">Sign out</a></>:<a href={signInUrl} target="_top">Sign in with ChatGPT</a>}</div></header>
+  <header className="topbar"><Link href="/" className="brand"><span className="brand-mark"><Zap/></span>VoltRoute <small className="beta">BETA</small></Link><div className="account-nav">{signedIn?<><span>{account||'Signed in'}</span><a href="/signout-with-chatgpt?return_to=%2F" target="_top">Sign out</a></>:<a href={signInUrl} target="_top">Sign in with ChatGPT</a>}</div></header>
   <div className="data-banner"><span>{loading?'Loading directory…':error?'Directory search unavailable':directoryNotice?'Saved directory listings':fetchedAt?'Community directory loaded':'Community station directory'}</span> Live availability is not connected. Each charger shows the source and age of any operational observation.</div>
   {!signedIn?<section className="signin-panel"><Zap/><h1>Your next charging stop, with a better break.</h1><p>Find mapped EV chargers, nearby food and restrooms. Sign in to search and save your vehicles and trips.</p><Button asChild><a href={signInUrl} target="_top">Sign in with ChatGPT <ArrowRight/></a></Button></section>:<>
   <nav className="mobile-jumps" aria-label="Charging page sections"><a href="#charger-search">Search & vehicle</a><a href="#charger-map">Map & results</a><a href="#charging-stop">Charging stop</a></nav>
@@ -161,7 +164,7 @@ export default function VoltApp({signedIn,signInUrl}:{signedIn:boolean;signInUrl
     <ChargerMap availability={stationAvailability} center={center} stations={visible} selected={selected} amenities={amenities} route={smartPlan?.route||road} backupRoute={smartPlan?.selected?.backup?.route||null} mainId={smartPlan?.selected?.station.id} backupId={smartPlan?.selected?.backup?.station.id} riskSections={showRisk?tripAssessment?.sections||[]:[]} focusedRiskId={focusedRisk} onRiskFocus={id=>setFocusedRisk(current=>current===id?null:id)} onSelect={setSelected} onSearch={p=>loadStations(p)}/>
     <div className="map-key"><span className="cluster-key">Numbered groups: mapped stations. Tap to zoom.</span><span className="unknown-color">● Unknown status</span><span className="recent-color">● Recent observation</span><span>● Live operator status</span><span className="food-color">● Food</span><span className="restroom-color">● Restrooms</span><span className="shopping-color">● Shopping</span><span className="route-color">● Search center{!tripAssessment||!showRisk?' / road route':''}</span>{smartPlan?.selected?.backup?.route&&<span className="backup-color">Dashed path: main → backup</span>}</div>
     {tripAssessment&&<TripAssessmentPanel assessment={tripAssessment} showRisk={showRisk} focusedId={focusedRisk} onShowRisk={show=>{setShowRisk(show);if(!show)setFocusedRisk(null);}} onFocus={setFocusedRisk}/>}
-    {smartPlan&&<TripCostPanel result={smartPlan} now={hoursClock??Date.now()}/>}
+    {smartPlan&&<TripCostPanel result={smartPlan} now={currentTime}/>}
     {selected&&<a className="mobile-stop-link" href="#charging-stop">View {selected.name}: details, food & restrooms ↓</a>}
     <section className="results-panel" aria-busy={loading}><div className="results-heading"><div><p className="eyebrow">{emergency?'Emergency compatible search':center.label}</p><h2>{loading?'Finding mapped chargers…':error?'Charger search unavailable':fetchedAt?`${visible.length} mapped charging stations`:'Search for charging stations'}</h2></div>{fetchedAt&&!loading&&<small>{directoryNotice?'Saved directory retrieved':'Directory retrieved'}<br/>{evidenceTime(fetchedAt)}</small>}</div>
      <p className="muted-small">Up to 250 mapped results in the selected area, sorted by distance. Coverage may be incomplete. Distances are straight-line, not driving distance. Food/restrooms load when you select a charger.</p>
