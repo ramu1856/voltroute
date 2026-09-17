@@ -1,0 +1,24 @@
+name: Restore VoltRoute source
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Restore complete source tree
+        run: |
+          tar -xzf voltroute-source.tar.gz
+          rm voltroute-source.tar.gz
+          rm .github/workflows/bootstrap.yml
+          git config user.name "VoltRoute Bootstrap"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "Import complete VoltRoute source"
+          git push
