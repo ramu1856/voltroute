@@ -1,5 +1,5 @@
 "use client";
-import {useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {Switch} from '@/components/ui/switch';
 import {positionFresh,recoveryInput,watchDue} from '@/lib/trip-watch';
@@ -10,11 +10,11 @@ import type {SmartStopInput,SmartStopResult} from '@/lib/smart-stop';
 export function TripRecovery({plan}:{plan:SmartStopResult}){
  const [lat,setLat]=useState(''),[lon,setLon]=useState(''),[battery,setBattery]=useState('');
  const [failed,setFailed]=useState(false),[watch,setWatch]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
- const [snapshot,setSnapshot]=useState<{input:SmartStopInput;at:number}|null>(null),[result,setResult]=useState<SmartStopResult|null>(null),[now,setNow]=useState(Date.now());
+ const [snapshot,setSnapshot]=useState<{input:SmartStopInput;at:number}|null>(null),[result,setResult]=useState<SmartStopResult|null>(null),[now,setNow]=useState(()=>Date.now());
  const request=useRef<AbortController|null>(null),lastStarted=useRef(0),locating=useRef(0);
  const input=recoveryInput(plan.input,lat,lon,battery,failed?plan.selected?.station.id??null:null);
  function invalidate(){request.current?.abort();request.current=null;locating.current++;setSnapshot(null);setResult(null);setBusy(false);setWatch(false);setError('');}
- async function check(s:{input:SmartStopInput;at:number}){
+ const check=useCallback(async(s:{input:SmartStopInput;at:number})=>{
   if(!positionFresh(s.at,Date.now())){setWatch(false);return;}
   request.current?.abort();const controller=new AbortController();request.current=controller;lastStarted.current=Date.now();setBusy(true);setResult(null);setError('');
   const timeout=setTimeout(()=>controller.abort(),90000);
@@ -25,13 +25,13 @@ export function TripRecovery({plan}:{plan:SmartStopResult}){
    setResult(data);
   }catch(e){if(request.current===controller){setError(controller.signal.aborted?'Check stopped or timed out. Confirm your position and retry.':(e as Error).message);setWatch(false);}}
   finally{clearTimeout(timeout);if(request.current===controller){setBusy(false);setNow(Date.now());}}
- }
- useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>{clearInterval(timer);request.current?.abort();locating.current++;};},[]);
+ },[]);
+ useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>{clearInterval(timer);request.current?.abort();};},[]);
  useEffect(()=>{
   if(!watch||!snapshot)return;
-  if(!positionFresh(snapshot.at,now)){setWatch(false);request.current?.abort();return;}
+  if(!positionFresh(snapshot.at,now)){request.current?.abort();queueMicrotask(()=>setWatch(false));return;}
   if(watchDue(now,snapshot.at,lastStarted.current,document.visibilityState==='visible',busy))void check(snapshot);
- },[now,watch,snapshot,busy]);
+ },[now,watch,snapshot,busy,check]);
  const fresh=!!snapshot&&positionFresh(snapshot.at,now);
  const usable=!!result&&fresh&&!isSmartStopExpired(result,now)&&!busy;
  function locate(){
