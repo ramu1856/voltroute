@@ -1,10 +1,10 @@
 import { env } from 'cloudflare:workers';
-import { getChatGPTUser } from '@/app/chatgpt-auth';
+import { requireSupabaseUser } from './supabase-server.ts';
 import { LocalRateLimitError, ServiceError } from './service-error.ts';
 import { loadDirectory } from './directory-cache.ts';
 export { LocalRateLimitError, ServiceError } from './service-error.ts';
 export function database() { if(!env.DB) throw new Error('Account storage is temporarily unavailable. Please try again later.'); return env.DB; }
-export async function requireUser() {const user=await getChatGPTUser();if(!user)throw new ServiceError('Sign in with ChatGPT to continue.',401);return user;}
+export async function requireUser(request:Request) {return requireSupabaseUser(request);}
 export function sameOrigin(request:Request) { if(request.headers.get('origin')!==new URL(request.url).origin) throw new ServiceError('This request must come from VoltRoute.',403); }
 export async function limit(key:string,ms:number) {
   const now=Date.now();

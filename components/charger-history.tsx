@@ -5,14 +5,14 @@ import { historySummary,type SharedObservation } from '@/lib/community-history';
 import { evidenceTime } from '@/lib/station-evidence';
 type History={personal:{id:string;status:string;reportedAt:number}[];community:SharedObservation[];asOf:number};
 const labels:Record<string,string>={charged:'Successfully charged',working:'Reported working',busy:'Reported busy',broken:'Reported broken',problem:'Charging problem'};
-export function ChargerHistory({stationId,version,onPrivateCleared}:{stationId:string;version:number|undefined;onPrivateCleared:()=>void}){
+export function ChargerHistory({stationId,version,accessToken,onPrivateCleared}:{stationId:string;version:number|undefined;accessToken:string;onPrivateCleared:()=>void}){
  const [data,setData]=useState<History|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[revision,setRevision]=useState(0),[notice,setNotice]=useState('');
  const [status,setStatus]=useState('charged'),[consent,setConsent]=useState(false);
  useEffect(()=>{const controller=new AbortController();
-  void Promise.resolve().then(()=>{if(controller.signal.aborted)return;setLoading(true);setError('');return fetch(`/api/community?stationId=${encodeURIComponent(stationId)}`,{signal:controller.signal});}).then(async r=>{if(!r)return;const body=await r.json() as History&{error?:string};if(!r.ok)throw new Error(body.error||'History could not be loaded.');if(!controller.signal.aborted)setData(body);}).catch(e=>{if(!controller.signal.aborted)setError(e.message);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});return()=>controller.abort();
- },[stationId,version,revision]);
+  void Promise.resolve().then(()=>{if(controller.signal.aborted)return;setLoading(true);setError('');return fetch(`/api/community?stationId=${encodeURIComponent(stationId)}`,{signal:controller.signal,headers:{Authorization:`Bearer ${accessToken}`}});}).then(async r=>{if(!r)return;const body=await r.json() as History&{error?:string};if(!r.ok)throw new Error(body.error||'History could not be loaded.');if(!controller.signal.aborted)setData(body);}).catch(e=>{if(!controller.signal.aborted)setError(e.message);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});return()=>controller.abort();
+ },[stationId,version,revision,accessToken]);
  async function act(method:string,path:string,body?:unknown,clearing=false){setBusy(true);setError('');setNotice('');try{
-  const response=await fetch(path,{method,headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});const result=await response.json() as {error?:string};if(!response.ok)throw new Error(result.error||'The change could not be saved.');
+  const response=await fetch(path,{method,headers:{'Content-Type':'application/json',Authorization:`Bearer ${accessToken}`},...(body?{body:JSON.stringify(body)}:{})});const result=await response.json() as {error?:string};if(!response.ok)throw new Error(result.error||'The change could not be saved.');
   setConsent(false);setRevision(n=>n+1);if(clearing)onPrivateCleared();setNotice(clearing?'Private history and current report cleared.':method==='POST'?'Your observation is shared.':method==='PATCH'?'Observation hidden after your flag.':'Your observation was withdrawn.');
  }catch(e){setError((e as Error).message);}finally{setBusy(false);}}
  const summary=data?historySummary(data.community):null;

@@ -14,10 +14,10 @@ import type { Point, Profile } from '@/lib/ev';
 import { TripRecovery } from './trip-recovery';
 import { RouteComparison } from './route-comparison';
 
-type Props={origin:Point;destination:Point;profile:Profile;battery:number;now:number|null;reportsVersion:string;enteredRates:Record<string,string>;onResult:(result:SmartStopResult)=>void;onClear:()=>void;onView:(result:SmartStopResult,stop:'main'|'backup')=>void};
+type Props={origin:Point;destination:Point;profile:Profile;battery:number;now:number|null;reportsVersion:string;enteredRates:Record<string,string>;accessToken?:string;onResult:(result:SmartStopResult)=>void;onClear:()=>void;onView:(result:SmartStopResult,stop:'main'|'backup')=>void};
 const exclusionLabels:Record<string,string>={connector:'Connector does not match',unavailable:'Reported unavailable',access:'Restricted access',road:'Road connection unconfirmed',reserve:'Below battery reserve',detour:'Over extra-driving limit',hours:'Closed at arrival or during estimated session','no-charge':'No useful charge at this stop',backup:'No backup meets No-Stranding requirements'};
 
-export function SmartStopPlanner({origin,destination,profile,battery,now,reportsVersion,enteredRates,onResult,onClear,onView}:Props){
+export function SmartStopPlanner({origin,destination,profile,battery,now,reportsVersion,enteredRates,accessToken,onResult,onClear,onView}:Props){
   const [reserve,setReserve]=useState('15'),[detour,setDetour]=useState('20'),[capacity,setCapacity]=useState(''),[maxKW,setMaxKW]=useState('');
   const [noStranding,setNoStranding]=useState(true),[failureAllowance,setFailureAllowance]=useState('3'),[failureDelay,setFailureDelay]=useState('10');
   const [preference,setPreference]=useState<RoutePreference>('balanced');
@@ -34,7 +34,7 @@ export function SmartStopPlanner({origin,destination,profile,battery,now,reports
     request.current?.abort();const controller=new AbortController();request.current=controller;
     setBusy(true);setResult(null);setError('');onClear();
     try{
-      const response=await fetch('/api/smart-stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),signal:controller.signal});
+      const response=await fetch('/api/smart-stop',{method:'POST',headers:{'Content-Type':'application/json',...(accessToken?{Authorization:`Bearer ${accessToken}`}:{})},body:JSON.stringify(input),signal:controller.signal});
       const data=await response.json() as SmartStopResult&{error?:string};
       if(!response.ok)throw new Error(data.error||'Could not compare charging stops. Please try again.');
       if(controller.signal.aborted)return;

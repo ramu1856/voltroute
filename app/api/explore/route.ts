@@ -1,12 +1,12 @@
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
-import { cached, cachedDirectory, failure, fetchJson, requireUser, ServiceError } from '@/lib/server-data';
+import { cached, cachedDirectory, failure, fetchJson, ServiceError } from '@/lib/server-data';
 import { normalizeAmenities, normalizeStation, type Point } from '@/lib/ev';
 import { fetchOverpass, overpassEndpoints } from '@/lib/overpass';
 const coords=z.object({lat:z.coerce.number().min(-90).max(90),lon:z.coerce.number().min(-180).max(180)});
 export async function GET(request:Request) {
  try {
-  await requireUser(); const q=new URL(request.url).searchParams;const action=q.get('action');
+  const q=new URL(request.url).searchParams;const action=q.get('action');
   const settings=env as unknown as Record<string,string>;
   if(action==='search') {
     const text=z.string().trim().min(2).max(160).parse(q.get('q'));

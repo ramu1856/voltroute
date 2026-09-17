@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
-import { cached, database, failure, fetchJson, limit, requireUser, sameOrigin, ServiceError, LocalRateLimitError } from '@/lib/server-data';
+import { cached, database, failure, fetchJson, limit, sameOrigin, ServiceError, LocalRateLimitError } from '@/lib/server-data';
+import { getOptionalUser } from '@/lib/supabase-server';
 import { normalizeStation, type Point, type RoadRoute, type Station } from '@/lib/ev';
 import { fetchOverpass, overpassEndpoints } from '@/lib/overpass';
 import { arrivalBattery, corridorQuery, rankStops, routeCoordinates, shortlistStations, smartStopSchema, type SmartStopResult } from '@/lib/smart-stop';
@@ -20,7 +21,7 @@ async function providerCache<T>(cacheKey:string,provider:string,loader:()=>Promi
 
 export async function POST(request:Request){
   try{
-    sameOrigin(request);const user=await requireUser();await limit(`smart-stop:${user.userId}`,5000);
+    sameOrigin(request);const user=await getOptionalUser(request);const visitor=user?.userId||request.headers.get('cf-connecting-ip')||'anonymous';await limit(await key('smart-stop',visitor),5000);
     if(Number(request.headers.get('content-length')||0)>8000)throw new ServiceError('Trip input is too large.',400);
     const text=await request.text();if(text.length>8000)throw new ServiceError('Trip input is too large.',400);
     const input=smartStopSchema.parse(JSON.parse(text));
@@ -47,7 +48,7 @@ export async function POST(request:Request){
       return {stations:elements.slice(0,400).map(e=>normalizeStation(e,input.origin)).filter((station):station is Station=>station!==null),limited:elements.length>400};
     });
     result.mappedCount=directory.data.stations.length;result.directoryFetchedAt=directory.fetchedAt;result.searchLimited=directory.data.limited;
-    const records=await database().prepare("SELECT payload,updated FROM saved_items WHERE owner=? AND kind='report' ORDER BY updated DESC LIMIT 200").bind(user.userId).all<{payload:string;updated:number}>();
+    const records=user?await database().prepare("SELECT payload,updated FROM saved_items WHERE owner=? AND kind='report' ORDER BY updated DESC LIMIT 200").bind(user.userId).all<{payload:string;updated:number}>():{results:[] as {payload:string;updated:number}[]};
     const reports:Record<string,PersonalReport>={};
     for(const row of records.results){try{const value=JSON.parse(row.payload);if(typeof value.sourceId==='string'&&!reports[value.sourceId]&&['working','busy','broken'].includes(value.status))reports[value.sourceId]={sourceId:value.sourceId,status:value.status,reportedAt:row.updated};}catch{/* Ignore an unreadable old personal report. */}}
     const shortlist=shortlistStations(directory.data.stations.filter(station=>!input.excludedStationIds?.includes(station.id)),input,baseRoute,reports,Date.now());

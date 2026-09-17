@@ -9,9 +9,9 @@ const saveSchema=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('trip'),payload:tripSchema}),
  z.object({kind:z.literal('report'),payload:reportSchema}),
 ]);
-export async function GET() {try{const user=await requireUser();const result=await database().prepare('SELECT id,kind,payload,updated FROM saved_items WHERE owner=? ORDER BY updated DESC LIMIT 200').bind(user.userId).all<{id:string;kind:string;payload:string;updated:number}>();return Response.json({user:{name:user.displayName,email:user.email},items:result.results.map(i=>({...i,payload:JSON.parse(i.payload)}))},{headers:{'Cache-Control':'private, no-store'}});}catch(e){return failure(e);}}
+export async function GET(request:Request) {try{const user=await requireUser(request);const result=await database().prepare('SELECT id,kind,payload,updated FROM saved_items WHERE owner=? ORDER BY updated DESC LIMIT 200').bind(user.userId).all<{id:string;kind:string;payload:string;updated:number}>();return Response.json({user:{name:user.displayName,email:user.email},items:result.results.map(i=>({...i,payload:JSON.parse(i.payload)}))},{headers:{'Cache-Control':'private, no-store'}});}catch(e){return failure(e);}}
 export async function POST(request:Request) {try{
- sameOrigin(request);const user=await requireUser();await limit(`save:${user.userId}`,500);
+ sameOrigin(request);const user=await requireUser(request);await limit(`save:${user.userId}`,500);
  if(Number(request.headers.get('content-length')||0)>8000)throw new ServiceError('Saved item is too large.',400);
  const raw=await request.text();if(raw.length>8000)throw new ServiceError('Saved item is too large.',400);
  const item=saveSchema.parse(JSON.parse(raw));const db=database();
@@ -27,4 +27,4 @@ export async function POST(request:Request) {try{
  await db.batch(writes);
  return Response.json({id,saved:true,updated});
  }catch(e){return failure(e instanceof z.ZodError || e instanceof SyntaxError ?new ServiceError('Please check the saved item details.',400):e);}}
-export async function DELETE(request:Request) {try{sameOrigin(request);const user=await requireUser();const id=z.string().min(1).max(100).parse(new URL(request.url).searchParams.get('id'));await database().prepare('DELETE FROM saved_items WHERE owner=? AND id=?').bind(user.userId,id).run();return Response.json({deleted:true});}catch(e){return failure(e);}}
+export async function DELETE(request:Request) {try{sameOrigin(request);const user=await requireUser(request);const id=z.string().min(1).max(100).parse(new URL(request.url).searchParams.get('id'));await database().prepare('DELETE FROM saved_items WHERE owner=? AND id=?').bind(user.userId,id).run();return Response.json({deleted:true});}catch(e){return failure(e);}}
