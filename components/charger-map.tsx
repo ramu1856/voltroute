@@ -6,12 +6,12 @@ import type { AvailabilityInfo } from '@/lib/station-evidence';
 import { riskStyles, type RiskSection } from '@/lib/trip-assessment';
 import 'leaflet/dist/leaflet.css';
 export default function ChargerMap({center,stations,selected,amenities,route,backupRoute,mainId,backupId,riskSections,focusedRiskId,onRiskFocus,availability,onSelect,onSearch}:{center:Point;stations:Station[];selected:Station|null;amenities:Amenity[];route:RoadRoute|null;backupRoute:RoadRoute|null;mainId?:string;backupId?:string;riskSections:RiskSection[];focusedRiskId:string|null;onRiskFocus:(id:string)=>void;availability:Map<string,AvailabilityInfo>;onSelect:(s:Station)=>void;onSearch:(p:Point)=>void}) {
- const container=useRef<HTMLDivElement>(null), map=useRef<Leaflet.Map|null>(null), L=useRef<typeof Leaflet|null>(null), layer=useRef<Leaflet.LayerGroup|null>(null);
+ const container=useRef<HTMLDivElement>(null), map=useRef<Leaflet.Map|null>(null), L=useRef<typeof Leaflet|null>(null), layer=useRef<Leaflet.LayerGroup|null>(null),initialCenter=useRef(center);
  const [ready,setReady]=useState(false),[error,setError]=useState(''),[viewRevision,setViewRevision]=useState(0);
- const choose=useRef(onSelect);choose.current=onSelect;
- const focusRisk=useRef(onRiskFocus);focusRisk.current=onRiskFocus;
+ const choose=useRef(onSelect),focusRisk=useRef(onRiskFocus);
+ useEffect(()=>{choose.current=onSelect;focusRisk.current=onRiskFocus;},[onSelect,onRiskFocus]);
  useEffect(()=>{let disposed=false;let resize:ResizeObserver|undefined;
-  import('leaflet').then(lib=>{if(disposed||!container.current)return;L.current=lib;const m=lib.map(container.current,{scrollWheelZoom:false}).setView([center.lat,center.lon],12);map.current=m;
+  import('leaflet').then(lib=>{if(disposed||!container.current)return;L.current=lib;const first=initialCenter.current;const m=lib.map(container.current,{scrollWheelZoom:false}).setView([first.lat,first.lon],12);map.current=m;
    lib.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,keepBuffer:0,updateWhenIdle:true,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).on('tileerror',()=>setError('Some map tiles could not load. The station list still works.')).addTo(m);
    m.on('zoomend moveend',()=>setViewRevision(v=>v+1));layer.current=lib.layerGroup().addTo(m);resize=new ResizeObserver(()=>m.invalidateSize());resize.observe(container.current);setReady(true);
   }).catch(()=>setError('Map could not load. Use the station list below.'));
@@ -56,7 +56,7 @@ export default function ChargerMap({center,stations,selected,amenities,route,bac
   for(const s of pinned)drawStation(s);
   for(const p of amenities)add(p.lat,p.lon,`${p.kind==='food'?'Food':p.kind==='shopping'?'Shopping':'Restroom'}: ${p.name}`,p.kind==='food'?'#f5a65b':p.kind==='shopping'?'#f6d66d':'#9288ff',6);
  },[ready,viewRevision,center,stations,selected,amenities,route,backupRoute,mainId,backupId,availability,riskSections,focusedRiskId]);
- useEffect(()=>{const focused=riskSections.find(section=>section.id===focusedRiskId);const coordinates=focused?.coordinates||[...(route?.coordinates||[]),...(backupRoute?.coordinates||[])];if(ready&&coordinates.length)map.current?.fitBounds(coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[35,35],maxZoom:14});},[ready,route,backupRoute,focusedRiskId]);
+ useEffect(()=>{const focused=riskSections.find(section=>section.id===focusedRiskId);const coordinates=focused?.coordinates||[...(route?.coordinates||[]),...(backupRoute?.coordinates||[])];if(ready&&coordinates.length)map.current?.fitBounds(coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[35,35],maxZoom:14});},[ready,route,backupRoute,focusedRiskId,riskSections]);
  return <div className="real-map"><div ref={container} className="leaflet-host" aria-label="Interactive charging-station map" />
   <button className="search-area" disabled={!ready} onClick={()=>{const c=map.current!.getCenter();onSearch({lat:c.lat,lon:c.lng,label:'Selected map area'});}}>Search this map area</button>
   {error&&<p className="map-error" role="status">{error}</p>}
