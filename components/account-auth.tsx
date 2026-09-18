@@ -4,7 +4,7 @@ import { Mail, Phone, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabaseBrowser } from '@/lib/supabase-client';
 
-export function AccountAuth({open,onClose}:{open:boolean;onClose:()=>void}) {
+export function AccountAuth({open,onClose,supabaseUrl,supabaseKey}:{open:boolean;onClose:()=>void;supabaseUrl:string;supabaseKey:string}) {
   const [email,setEmail]=useState('');
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
@@ -13,7 +13,7 @@ export function AccountAuth({open,onClose}:{open:boolean;onClose:()=>void}) {
   async function sendLink(){
     setBusy(true);setError('');setMessage('');
     try{
-      const {error:authError}=await supabaseBrowser().auth.signInWithOtp({email:email.trim(),options:{emailRedirectTo:window.location.origin}});
+      const {error:authError}=await supabaseBrowser({url:supabaseUrl,key:supabaseKey}).auth.signInWithOtp({email:email.trim(),options:{emailRedirectTo:window.location.origin}});
       if(authError)throw authError;
       setMessage('Secure sign-in link sent. Open your email on this device to continue.');
     }catch(reason){setError(reason instanceof Error?reason.message:'Could not send the sign-in link.');}
