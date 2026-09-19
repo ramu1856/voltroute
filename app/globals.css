@@ -243,3 +243,6 @@
 
 .live-refresh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 13px;margin:12px 0 16px;border:1px solid #48664f;border-radius:10px;background:#173021}.live-refresh>div{min-width:0}.live-refresh strong{display:block;font-size:.9rem;color:#eef7f0}.live-refresh p{margin:5px 0 0;font-size:.8rem;line-height:1.5;color:#bfd1c4;overflow-wrap:anywhere}.live-refresh [data-slot=button]{flex-shrink:0}
 @media(max-width:520px){.live-refresh{display:grid}.live-refresh [data-slot=button]{width:100%}}
+
+.vr-footer p{margin:0}.vr-footer nav{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px}.vr-footer nav a{text-decoration:underline;text-underline-offset:3px}
+.legal-page{min-height:100vh;background:#0c1b13;color:#eaf4ec;padding:48px 20px}.legal-shell{width:min(820px,100%);margin:0 auto}.legal-shell>a{color:#b9efc4}.legal-shell h1{font-size:clamp(2rem,5vw,3rem);margin:28px 0 12px;letter-spacing:-.03em}.legal-shell h2{font-size:1.2rem;margin:30px 0 8px}.legal-shell p{color:#bfd0c3;line-height:1.75;font-size:1rem}.legal-shell strong{color:#eff8f1}
