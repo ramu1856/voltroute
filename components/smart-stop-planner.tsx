@@ -11,6 +11,7 @@ import { isSmartStopExpired } from '@/lib/smart-stop-validity';
 import { routePreferences, type RoutePreference } from '@/lib/route-preferences';
 import { projectStopEnergy } from '@/lib/trip-budget';
 import type { Point, Profile } from '@/lib/ev';
+import { predictWaitForecast, waitWindowLabel } from '@/lib/wait-forecast';
 import { TripRecovery } from './trip-recovery';
 import { RouteComparison } from './route-comparison';
 
@@ -47,6 +48,8 @@ export function SmartStopPlanner({origin,destination,profile,battery,now,reports
   const backup=selected?.backup;
   const currentAvailability=selected?evaluateAvailability(selected.station,selected.personalReport||undefined,currentTime):null;
   const backupAvailability=backup?evaluateAvailability(backup.station,backup.personalReport||undefined,currentTime):null;
+  const mainWait=currentAvailability?predictWaitForecast(currentAvailability):null;
+  const backupWait=backupAvailability?predictWaitForecast(backupAvailability):null;
   const backupHours=backup?evaluateStationHours(backup.station,new Date(currentTime+(backup.totalDriveMinutes+backup.failureDelayMinutes)*60_000)):null;
   const expired=!!result&&isSmartStopExpired(result,currentTime);
   useEffect(()=>{if(expired)clear.current();},[expired]);
@@ -77,6 +80,7 @@ export function SmartStopPlanner({origin,destination,profile,battery,now,reports
         </div>
         <p className="smart-session">Target: ~{selected.targetBattery.toFixed(0)}% battery{selected.chargeMinutes!==null?` · roughly ${selected.chargeMinutes} min charging`:'. Charge time unavailable.'}</p>
         {selected.chargeMinutes!==null&&<p className="smart-note">Uses your entered capacity and power limit, listed connector power and a 25% time allowance. Actual charging speed and tapering vary.</p>}
+        {mainWait&&<p className="smart-note">{mainWait.minMinutes===null?'Wait prediction unavailable.':`Estimated queue window ${waitWindowLabel(mainWait)} (${mainWait.confidence} confidence).`} {mainWait.detail}</p>}
         <p className="smart-warning"><AlertTriangle size={17}/>{selected.availability.freshness==='live'&&selected.availability.condition==='available'?'Port availability can change before arrival.':'A working, free port is not confirmed. Check the operator before driving.'}</p>
         <div className="smart-actions"><Button type="button" variant="secondary" className="full" disabled={expired} onClick={()=>onView(result,'main')}><ArrowRight/>View charger & nearby places</Button>{!expired&&<a href={`https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lon}&destination=${selected.station.lat},${selected.station.lon}&travelmode=driving`} target="_blank" rel="noreferrer"><Navigation size={17}/>Open directions to charger ↗</a>}</div>
         <section className="backup-card" aria-label="Backup charging stop"><p className="eyebrow">If the main charger fails</p>{backup?<>
@@ -84,6 +88,7 @@ export function SmartStopPlanner({origin,destination,profile,battery,now,reports
           <p className="smart-note">{backup.station.address||`${backup.station.lat.toFixed(4)}, ${backup.station.lon.toFixed(4)}`}</p>
           <span className={`evidence-badge evidence-${backupAvailability!.freshness}`}>{backupAvailability!.label}</span>
           <p className="smart-note">{backupAvailability?.freshness==='live'&&backupAvailability.condition==='available'?'A free port is reported now; availability can change before arrival.':'A working, free port at the backup is not confirmed.'}</p>
+          {backupWait&&<p className="smart-note">{backupWait.minMinutes===null?'Backup wait prediction unavailable.':`Estimated backup queue window ${waitWindowLabel(backupWait)} (${backupWait.confidence} confidence).`} {backupWait.detail}</p>}
           <div className="smart-metrics"><div><BatteryCharging size={18}/><strong>~{backup.arrivalBattery.toFixed(1)}%</strong><span>Battery at backup</span></div><div><Route size={18}/><strong>{backup.connection.miles.toFixed(1)} mi</strong><span>From main · {backup.connection.minutes.toFixed(0)} min</span></div></div>
           <p className="smart-session">Assumes no charge at the main stop and deducts a {backup.failureAllowance}% battery allowance. Your {result.input.reserve}% arrival reserve is retained.</p>
           <dl className="backup-facts"><div><dt>Hours at estimated arrival</dt><dd>{backupHours?.state==='open'?'Listed schedule covers arrival':backupHours?.state==='closed'?'Closed — recalculate':'Unconfirmed'}</dd></div><div><dt>Listed opening hours</dt><dd>{backup.station.hours}</dd></div><div><dt>Public access</dt><dd>{['yes','permissive'].includes(backup.station.access)?'Listed as public':`Unconfirmed (${backup.station.access})`}</dd></div></dl>
