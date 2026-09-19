@@ -6,7 +6,7 @@ const siteUrl = "https://voltroutes.com";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: "VoltRoute | EV Charger & Road-Trip Planner",
-  description: "Find mapped US EV charging stations, check vehicle compatibility, plan safer charging stops, and find nearby food and restrooms.",
+  description: "Plan EV charging with backup-first route checks, trip confidence scoring, queue allowances, and nearby stop planning in one flow.",
   applicationName: "VoltRoute",
   alternates: { canonical: "/" },
   keywords: ["EV charger finder", "EV route planner", "electric vehicle charging stations", "charging stops", "EV road trip"],
@@ -15,12 +15,12 @@ export const metadata: Metadata = {
     url: siteUrl,
     siteName: "VoltRoute",
     title: "VoltRoute | EV Charger & Road-Trip Planner",
-    description: "Find mapped US EV chargers, plan charging stops, and check nearby food and restrooms.",
+    description: "Backup-first EV route planning with confidence scoring, transparent assumptions, and trip-ready charging decisions.",
   },
   twitter: {
     card: "summary",
     title: "VoltRoute | EV Charger & Road-Trip Planner",
-    description: "Find mapped US EV chargers, plan charging stops, and check nearby food and restrooms.",
+    description: "Backup-first EV route planning with confidence scoring and transparent charging assumptions.",
   },
   robots: { index: true, follow: true },
   icons: {
