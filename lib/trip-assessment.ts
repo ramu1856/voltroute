@@ -4,6 +4,7 @@ import { evaluateAvailability, type AvailabilityInfo } from './station-evidence.
 import { evaluateStationHours } from './opening-hours.ts';
 import { isSmartStopExpired } from './smart-stop-validity.ts';
 import { projectStopEnergy } from './trip-budget.ts';
+import { projectMultiStopItinerary, scoreProjectedItinerary, type ItineraryProjection } from './itinerary-forecast.ts';
 
 export type RiskLevel='covered'|'review'|'gap'|'unassessed';
 export const riskStyles:Record<RiskLevel,{label:string;color:string}>={
@@ -23,6 +24,7 @@ export type TripAssessment={
   score:number|null;rawScore:number|null;label:string;summary:string;
   assessedMiles:number;totalMiles:number;unassessedMiles:number;coveragePercent:number;
   factors:ConfidenceFactor[];limits:{maximum:number;reason:string}[];issues:string[];sections:RiskSection[];
+  itinerary: ItineraryProjection;
 };
 
 const clamp=(n:number,min=0,max=1)=>Math.max(min,Math.min(max,n));
@@ -66,7 +68,7 @@ function evidenceCredit(info:AvailabilityInfo):number{
 }
 
 export function assessTrip(result:SmartStopResult,now:number):TripAssessment{
-  const empty:TripAssessment={score:null,rawScore:null,label:'Recalculate',summary:'A current road and battery assessment is needed.',assessedMiles:0,totalMiles:0,unassessedMiles:0,coveragePercent:0,factors:[],limits:[],issues:[],sections:[]};
+  const empty:TripAssessment={score:null,rawScore:null,label:'Recalculate',summary:'A current road and battery assessment is needed.',assessedMiles:0,totalMiles:0,unassessedMiles:0,coveragePercent:0,factors:[],limits:[],issues:[],sections:[],itinerary:{status:'unavailable',score:null,label:'Forecast unavailable',projectedStops:0,projectedCoveredMiles:0,remainingMiles:0,legs:[],notes:['Recalculate to project a full itinerary.']}};
   if(!smartStopSchema.safeParse(result.input).success||!measureRoad(result.route))return {...empty,label:'Score unavailable',summary:'There is no usable driving route to score. Choose different locations and recalculate.'};
   if(isSmartStopExpired(result,now))return {...empty,summary:'The plan or its supporting evidence is no longer current. Recalculate before using the score or map.'};
   const {input,selected:main}=result,road=result.route,backup=main?.backup;
@@ -145,5 +147,43 @@ export function assessTrip(result:SmartStopResult,now:number):TripAssessment{
     else addSection('main',road,clamp(main!.legs.toMiles,0,road.miles),road.miles,'unassessed','After the next charging stop','The rest of the charging itinerary has not been planned. Battery is not projected past this stop.',null);
     if(backupRoad)addDriving('backup',backupRoad,backupRoad.miles,mainArrival-input.failureAllowance,backed&&backupOpen&&currentBackup?.freshness==='live'&&currentBackup.condition==='available','The backup road is checked, but current operation, public access or arrival hours still need confirmation.');
   }else addDriving('main',road,road.miles,input.battery,false,'No charging stop is recommended under the current requirements. Remaining battery here does not confirm a place to charge ahead.');
-  return {score,rawScore,label:noCharge?(score>=75?'Covered by entered range':'Review battery buffer'):oneStopComplete?'Conditional one-stop plan':hasStop?'Partial charging plan':'Charging plan incomplete',summary:noCharge?'The road route fits your entered range and reserve. Actual conditions can change consumption.':oneStopComplete?'One planned charge can cover this road route if its target battery is reached. Operation and future port availability remain uncertain.':hasStop?'The score includes the unplanned remainder of your trip. A good first stop does not confirm the whole journey.':'Resolve the charging gap before relying on this route.',assessedMiles:coveredMiles,totalMiles:road.miles,unassessedMiles,coveragePercent:coverage*100,factors,limits,issues,sections};
+  let itinerary: ItineraryProjection = {
+    status: 'incomplete',
+    score: null,
+    label: 'Projected itinerary unavailable',
+    projectedStops: 0,
+    projectedCoveredMiles: coveredMiles,
+    remainingMiles: Math.max(0, road.miles - coveredMiles),
+    legs: [],
+    notes: ['A projected full itinerary needs a valid next charging stop and battery model.'],
+  };
+  if(noCharge||oneStopComplete){
+    itinerary = {
+      status: 'not-needed',
+      score,
+      label: noCharge ? 'No charging stops needed' : 'One-stop itinerary already covers destination',
+      projectedStops: 0,
+      projectedCoveredMiles: road.miles,
+      remainingMiles: 0,
+      legs: [],
+      notes: [noCharge ? 'Range and reserve already cover the full road route with no charging stop.' : 'The current one-stop plan already covers the full route if the planned charge succeeds.'],
+    };
+  } else if(hasStop){
+    const projection=projectMultiStopItinerary(input,road.miles,main!.legs.toMiles,main!.targetBattery);
+    const projectionScore=scoreProjectedItinerary(score,road.miles,projection.projectedCoveredMiles,projection.projectedStops,projection.remainingMiles);
+    itinerary = {
+      status: projection.remainingMiles <= 0.01 ? 'projected' : 'incomplete',
+      score: projectionScore,
+      label: projection.remainingMiles <= 0.01 ? 'Projected multi-stop itinerary' : 'Partial multi-stop projection',
+      projectedStops: projection.projectedStops,
+      projectedCoveredMiles: projection.projectedCoveredMiles,
+      remainingMiles: projection.remainingMiles,
+      legs: projection.legs,
+      notes: [
+        'Projection assumes each additional stop can charge to 80% with no queue, outage, or access issue.',
+        'Projected stops are battery-model checkpoints only. Specific chargers, hours, and live availability are not validated here.',
+      ],
+    };
+  }
+  return {score,rawScore,label:noCharge?(score>=75?'Covered by entered range':'Review battery buffer'):oneStopComplete?'Conditional one-stop plan':hasStop?'Partial charging plan':'Charging plan incomplete',summary:noCharge?'The road route fits your entered range and reserve. Actual conditions can change consumption.':oneStopComplete?'One planned charge can cover this road route if its target battery is reached. Operation and future port availability remain uncertain.':hasStop?'The score includes the unplanned remainder of your trip. A good first stop does not confirm the whole journey.':'Resolve the charging gap before relying on this route.',assessedMiles:coveredMiles,totalMiles:road.miles,unassessedMiles,coveragePercent:coverage*100,factors,limits,issues,sections,itinerary};
 }
