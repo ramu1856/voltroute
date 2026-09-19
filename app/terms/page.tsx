@@ -7,6 +7,6 @@ export default function Terms(){
  <h2>Emergency use</h2><p>Do not rely on VoltRoutes as an emergency or roadside-assistance service. If you cannot safely continue, contact your vehicle manufacturer, charging network, insurer, or roadside-assistance provider.</p>
  <h2>Third-party data</h2><p>VoltRoutes uses third-party map, routing, charging, and place data. Coverage can be incomplete and providers can change or become unavailable without notice.</p>
  <h2>Community reports</h2><p>Community observations are user-submitted reports about past conditions. They are not operator verification and do not prove current charger operation or port availability.</p>
- <h2>Acceptable use</h2><p>Do not misuse the service, attempt unauthorized access, overload providers, submit knowingly false reports, or use VoltRoutes in a way that violates law or another person's rights.</p>
+ <h2>Acceptable use</h2><p>Do not misuse the service, attempt unauthorized access, overload providers, submit knowingly false reports, or use VoltRoutes in a way that violates law or another person&apos;s rights.</p>
  </div></main>;
 }
