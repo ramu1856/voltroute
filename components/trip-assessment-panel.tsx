@@ -10,11 +10,19 @@ const distance=(n:number)=>n.toLocaleString('en-US',{maximumFractionDigits:1});
 export function TripAssessmentPanel({assessment,showRisk,focusedId,onShowRisk,onFocus}:Props){
   const selected=assessment.sections.find(section=>section.id===focusedId);
   const mainSections=assessment.sections.filter(section=>section.path==='main');
+  const itinerary=assessment.itinerary;
   return <section className="trip-assessment" aria-label="Trip confidence and route risks">
     <div className="trip-score-row"><div className="trip-score-number" aria-label={assessment.score===null?'Score unavailable':`Planning confidence ${assessment.score} out of 100`}><strong>{assessment.score??'—'}</strong><span>/100</span></div><div className="trip-score-copy"><h2><ShieldCheck size={18}/>Trip Safety Score</h2><p className="trip-score-label">Planning confidence · {assessment.label}</p><p>{assessment.summary}</p></div></div>
     <p className="trip-score-disclaimer"><Info size={16}/>A checklist score, not a probability of safety or a guarantee that chargers will work.</p>
     {assessment.score!==null&&<>
       <p className="trip-coverage"><strong>{distance(assessment.assessedMiles)} / {distance(assessment.totalMiles)} mi</strong> assessed for the charging plan ({Math.round(assessment.coveragePercent)}%).{assessment.unassessedMiles>.01&&<span>{distance(assessment.unassessedMiles)} mi remain unassessed.</span>}</p>
+      <details className="score-details"><summary>Full-itinerary projection (beta)</summary>
+        <p>{itinerary.label}{itinerary.score===null?'':` · Projected score ${itinerary.score}/100`}</p>
+        {itinerary.projectedStops>0&&<p>Estimated additional charging stops: <strong>{itinerary.projectedStops}</strong></p>}
+        <p>{distance(itinerary.projectedCoveredMiles)} / {distance(assessment.totalMiles)} mi can be followed in this projection.{itinerary.remainingMiles>.01&&` ${distance(itinerary.remainingMiles)} mi still have no battery projection.`}</p>
+        {itinerary.legs.length>0&&<ul>{itinerary.legs.map(leg=><li key={leg.id}><strong>{distance(leg.fromMile)}–{distance(leg.toMile)} mi</strong> · ~{leg.batteryFrom.toFixed(1)}% → ~{leg.batteryTo.toFixed(1)}%{leg.requiresChargeStop&&' · charging stop assumed'}<small className="block text-[0.81rem] leading-relaxed text-[#b5cabd]">{leg.assumption}</small></li>)}</ul>}
+        <ul>{itinerary.notes.map(note=><li key={note}>{note}</li>)}</ul>
+      </details>
       <details className="score-details"><summary>Why this score?</summary>
         <p>Add earned points, divide by applicable points, then apply the limits below. Checks marked “Not needed” are excluded from both totals. These weights are product rules, not measured failure probabilities.</p>
         <div className="score-table-wrap"><table><thead><tr><th scope="col">Check</th><th scope="col">Points</th></tr></thead><tbody>{assessment.factors.map(factor=><tr key={factor.key}><th scope="row">{factor.label}<span>{factor.reason}</span></th><td>{factor.applicable?`${factor.earned.toFixed(1)} / ${factor.possible}`:'Not needed'}</td></tr>)}</tbody></table></div>
