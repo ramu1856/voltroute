@@ -60,7 +60,7 @@ export function tomTomOperatorObservation(
   observedAt=new Date().toISOString(),
 ):OperatorObservation|null{
   if(!stationId||!Array.isArray(response.connectors)||!response.connectors.length)return null;
-  let total=0,available=0,occupied=0,reserved=0,unknown=0,outOfService=0,usable=0;
+  let total=0,available=0,occupied=0,reserved=0,outOfService=0,usable=0;
   for(const connector of response.connectors){
     if(!validCount(connector.total))continue;
     const current=connector.availability?.current;
@@ -74,7 +74,6 @@ export function tomTomOperatorObservation(
     available+=current.available!;
     occupied+=current.occupied!;
     reserved+=current.reserved!;
-    unknown+=current.unknown!;
     outOfService+=current.outOfService!;
   }
   if(!usable||total<1)return null;
