@@ -1,5 +1,5 @@
-import type { OperatorObservation } from './station-evidence';
-import { miles } from './ev';
+import type { OperatorObservation } from './station-evidence.ts';
+import { miles } from './ev.ts';
 
 export const TOMTOM_CONNECTOR:Record<string,string>={
   NACS:'Tesla',
