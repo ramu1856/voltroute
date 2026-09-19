@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local runtime artifacts created by install/dev/build tooling.
+    ".sites-runtime/**",
+    ".wrangler/**",
+    ".vinext/**",
   ]),
   {
     files: ["components/ui/**/*.{ts,tsx}", "hooks/use-mobile.ts"],
