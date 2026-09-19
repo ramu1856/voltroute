@@ -16,6 +16,7 @@ import { arrivalBattery } from '@/lib/smart-stop';
 import type { TripAssessment } from '@/lib/trip-assessment';
 import { evaluateAvailability, ageLabel } from '@/lib/station-evidence';
 import { tripBudget } from '@/lib/trip-budget';
+import { predictWaitForecast, waitWindowLabel } from '@/lib/wait-forecast';
 import { CompetitiveBenchmark } from './competitive-benchmark';
 
 type Props = {
@@ -63,6 +64,8 @@ export function TripIntelligencePanel({ result, assessment, now }: Props) {
   const reviewCount =
     assessment?.sections.filter((section) => section.level === 'review').length ?? 0;
   const dataAge = availability?.ageMs ?? null;
+  const waitForecast = predictWaitForecast(availability);
+  const itinerary = assessment?.itinerary ?? null;
 
   return (
     <>
@@ -70,7 +73,7 @@ export function TripIntelligencePanel({ result, assessment, now }: Props) {
         <div className="trip-intelligence-heading">
           <div>
             <p className="eyebrow">VoltRoute trip intelligence</p>
-            <h2>12 trip checks in one place</h2>
+            <h2>13 trip checks in one place</h2>
           </div>
           <span className="trip-intelligence-state">
             {result.state === 'suggested' ? (
@@ -103,6 +106,13 @@ export function TripIntelligencePanel({ result, assessment, now }: Props) {
                   ? `${availability.availablePorts} of ${availability.totalPorts} matching ports reported free now`
                   : availability?.detail ?? 'No operational source connected for this stop.'}
             </small>
+            {!noChargeNeeded && (
+              <small>
+                {waitForecast.minMinutes === null
+                  ? 'Queue estimate unavailable for this stop.'
+                  : `Estimated queue window ${waitWindowLabel(waitForecast)} (${waitForecast.confidence} confidence).`}
+              </small>
+            )}
           </article>
 
           <article>
@@ -254,6 +264,25 @@ export function TripIntelligencePanel({ result, assessment, now }: Props) {
                   : budget.knownSubtotal !== null
                     ? `Known next-stop subtotal: ${dollars(budget.knownSubtotal)}. Full trip cost is not available yet.`
                     : budget.message}
+            </small>
+          </article>
+
+          <article>
+            <Map />
+            <span>13. Full-itinerary projection score</span>
+            <strong>
+              {itinerary?.score === null || itinerary === null ? 'Unavailable' : `${itinerary.score}/100`}
+            </strong>
+            <small>
+              {itinerary?.label ??
+                'Recalculate Smart Stop to project additional charging legs.'}
+            </small>
+            <small>
+              {itinerary?.projectedStops
+                ? `${itinerary.projectedStops} estimated additional charging stop${itinerary.projectedStops === 1 ? '' : 's'} after this stop.`
+                : itinerary?.status === 'not-needed'
+                  ? 'No extra charging stops projected.'
+                  : 'Projection is limited by current battery assumptions.'}
             </small>
           </article>
         </div>
