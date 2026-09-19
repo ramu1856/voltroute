@@ -240,3 +240,6 @@
 .trip-intelligence-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.trip-intelligence-grid article{display:grid;gap:7px;padding:13px;border:1px solid #3f5d48;border-radius:11px;background:#162d20;min-width:0}.trip-intelligence-grid article>svg{width:18px;height:18px;color:#b4edc0}.trip-intelligence-grid article>span{font-size:.78rem;line-height:1.35;color:#aebfb2}.trip-intelligence-grid article>strong{font-size:1rem;line-height:1.35;color:#eff8f1}.trip-intelligence-grid article>small{font-size:.76rem;line-height:1.5;color:#bdd0c3}
 @media(max-width:980px){.trip-intelligence-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.trip-intelligence{padding:17px 14px}.trip-intelligence-grid{grid-template-columns:1fr}}
+
+.live-refresh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 13px;margin:12px 0 16px;border:1px solid #48664f;border-radius:10px;background:#173021}.live-refresh>div{min-width:0}.live-refresh strong{display:block;font-size:.9rem;color:#eef7f0}.live-refresh p{margin:5px 0 0;font-size:.8rem;line-height:1.5;color:#bfd1c4;overflow-wrap:anywhere}.live-refresh [data-slot=button]{flex-shrink:0}
+@media(max-width:520px){.live-refresh{display:grid}.live-refresh [data-slot=button]{width:100%}}
