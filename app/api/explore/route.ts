@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 import { cached, cachedDirectory, failure, fetchJson, ServiceError } from '@/lib/server-data';
 import { normalizeAmenities, normalizeStation, type Point } from '@/lib/ev';
+import { chooseTomTomAvailabilitySource, TOMTOM_CONNECTOR, tomTomOperatorObservation } from '@/lib/tomtom-live';
 import { fetchOverpass, overpassEndpoints } from '@/lib/overpass';
 const coords=z.object({lat:z.coerce.number().min(-90).max(90),lon:z.coerce.number().min(-180).max(180)});
 export async function GET(request:Request) {
@@ -15,6 +16,26 @@ export async function GET(request:Request) {
       const json=await fetchJson(url.href) as {features:{geometry:{coordinates:number[]};properties:Record<string,string>}[]};
       return json.features.filter(f=>f.geometry?.coordinates?.length===2 && (f.properties.countrycode||'').toUpperCase()==='US').map(f=>({lat:f.geometry.coordinates[1],lon:f.geometry.coordinates[0],label:[f.properties.name,f.properties.city,f.properties.state,f.properties.postcode].filter((v,i,a)=>v&&a.indexOf(v)===i).join(', ')} satisfies Point));
     });return Response.json(result);
+  }
+  if(action==='live-station') {
+    const point=coords.parse({lat:q.get('lat')??undefined,lon:q.get('lon')??undefined});
+    const stationId=z.string().trim().min(1).max(120).parse(q.get('stationId'));
+    const name=z.string().trim().min(1).max(160).parse(q.get('name'));
+    const network=z.string().trim().min(1).max(160).parse(q.get('network')||'Network not listed');
+    const connector=z.enum(['NACS','CCS1','J1772','CHAdeMO']).parse(q.get('connector'));
+    const apiKey=settings.TOMTOM_API_KEY?.trim();
+    if(!apiKey)return Response.json({data:null,notice:'Live operator status is not configured yet.'},{headers:{'Cache-Control':'private, no-store'}});
+    const tomtomConnector=TOMTOM_CONNECTOR[connector];
+    const nearbyUrl=new URL('/search/2/nearbySearch/.json','https://api.tomtom.com');
+    nearbyUrl.search=new URLSearchParams({key:apiKey,lat:String(point.lat),lon:String(point.lon),radius:'650',limit:'12',connectorSet:tomtomConnector}).toString();
+    const nearby=await cached(`tomtom-nearby:v1:${point.lat.toFixed(4)}:${point.lon.toFixed(4)}:${tomtomConnector}`,'tomtom',120,async()=>fetchJson(nearbyUrl.href) as Promise<{results:unknown[]}>);
+    const source=chooseTomTomAvailabilitySource((nearby.data.results||[]) as Parameters<typeof chooseTomTomAvailabilitySource>[0],{...point,name,network});
+    if(!source)return Response.json({data:null,notice:'No matching TomTom live-availability station was confirmed near this map listing.'},{headers:{'Cache-Control':'private, no-store'}});
+    const availabilityUrl=new URL('/search/2/chargingAvailability.json','https://api.tomtom.com');
+    availabilityUrl.search=new URLSearchParams({key:apiKey,chargingAvailability:source.id,connectorSet:tomtomConnector}).toString();
+    const availability=await cached(`tomtom-live:v1:${source.id}:${tomtomConnector}`,'tomtom',60,async()=>fetchJson(availabilityUrl.href));
+    const observation=tomTomOperatorObservation(stationId,availability.data as Parameters<typeof tomTomOperatorObservation>[1],availability.fetchedAt);
+    return Response.json({data:observation,matched:{name:source.name,distanceMiles:source.distanceMiles},fetchedAt:availability.fetchedAt,notice:observation?null:'TomTom matched the station, but current connector availability was not usable.'},{headers:{'Cache-Control':'private, no-store'}});
   }
   if(action==='stations' || action==='amenities') {
     const point=coords.parse({lat:q.get('lat')??undefined,lon:q.get('lon')??undefined});
