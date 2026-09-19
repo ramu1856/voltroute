@@ -19,6 +19,7 @@ import { isSmartStopExpired } from '@/lib/smart-stop-validity';
 import { assessTrip } from '@/lib/trip-assessment';
 import { TripAssessmentPanel } from './trip-assessment-panel';
 import { TripCostPanel } from './trip-cost-panel';
+import { TripIntelligencePanel } from './trip-intelligence-panel';
 import { ChargingBreakPlanner } from './charging-break-planner';
 import { ChargerHistory } from './charger-history';
 import { AccountAuth } from './account-auth';
@@ -169,6 +170,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
     <ChargeSessionAssistant station={selected} vehicleName={profile.name} enteredRate={selected?enteredRates[selected.id]||'':''}/>
     <ChargerMap availability={stationAvailability} center={center} stations={visible} selected={selected} amenities={amenities} route={smartPlan?.route||road} backupRoute={smartPlan?.selected?.backup?.route||null} mainId={smartPlan?.selected?.station.id} backupId={smartPlan?.selected?.backup?.station.id} riskSections={showRisk?tripAssessment?.sections||[]:[]} focusedRiskId={focusedRisk} onRiskFocus={id=>setFocusedRisk(current=>current===id?null:id)} onSelect={setSelected} onSearch={p=>loadStations(p)}/>
     <div className="map-key"><span className="cluster-key">Numbered groups: mapped stations. Tap to zoom.</span><span className="unknown-color">● Unknown status</span><span className="recent-color">● Recent observation</span><span>● Live operator status</span><span className="food-color">● Food</span><span className="restroom-color">● Restrooms</span><span className="shopping-color">● Shopping</span><span className="route-color">● Search center{!tripAssessment||!showRisk?' / road route':''}</span>{smartPlan?.selected?.backup?.route&&<span className="backup-color">Dashed path: main → backup</span>}</div>
+    {smartPlan&&<TripIntelligencePanel result={smartPlan} assessment={tripAssessment} now={currentTime}/>} 
     {tripAssessment&&<TripAssessmentPanel assessment={tripAssessment} showRisk={showRisk} focusedId={focusedRisk} onShowRisk={show=>{setShowRisk(show);if(!show)setFocusedRisk(null);}} onFocus={setFocusedRisk}/>}
     {smartPlan&&<TripCostPanel result={smartPlan} now={currentTime}/>}
     {selected&&<a className="mobile-stop-link" href="#charging-stop">View {selected.name}: details, food & restrooms ↓</a>}
