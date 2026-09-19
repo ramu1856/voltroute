@@ -80,7 +80,7 @@ export function TripIntelligencePanel({ result, assessment, now }: Props) {
       <article>
         <BatteryCharging/><span>2. Arrival battery</span>
         <strong>{arrival === null || arrival === undefined ? 'Unavailable' : `~${arrival.toFixed(1)}%`}</strong>
-        <small>{stop ? `At ${stop.station.name}` : noChargeNeeded ? 'Estimated at destination' : 'Calculate a valid charging stop to estimate arrival battery.'}</small>
+        <small>{stop ? `${stop.station.name} arrival${destinationBattery !== null ? ` · destination after planned charge ~${destinationBattery.toFixed(1)}%` : ' · destination battery needs more route planning'}` : noChargeNeeded ? 'Estimated at destination' : 'Calculate a valid charging stop to estimate arrival battery.'}</small>
       </article>
 
       <article>
