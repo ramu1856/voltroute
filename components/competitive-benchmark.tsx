@@ -32,6 +32,12 @@ function coverageState(coveragePercent: number | undefined): Row["state"] {
   return "missing";
 }
 
+function stateClass(state: Row["state"]) {
+  if (state === "strong") return "text-[#9ff3b1]";
+  if (state === "partial") return "text-[#f0da89]";
+  return "text-[#f2a3a3]";
+}
+
 export function CompetitiveBenchmark({ result, assessment, now }: Props) {
   const stop = result.selected;
   const backup = stop?.backup ?? null;
@@ -126,52 +132,56 @@ export function CompetitiveBenchmark({ result, assessment, now }: Props) {
   }
 
   return (
-    <section className="competitive-benchmark" aria-label="VoltRoute competitive benchmark">
-      <div className="competitive-benchmark__header">
+    <section
+      aria-label="VoltRoute competitive benchmark"
+      className="min-w-0 break-words border-b border-[#46614f] bg-[#0f2218] px-5 py-5 max-[560px]:px-3"
+    >
+      <div>
         <p className="eyebrow">Competitive benchmark</p>
-        <h2>Why this plan is stronger than map-only EV tools</h2>
+        <h2 className="mt-0.5 text-xl">Why this plan is stronger than map-only EV tools</h2>
       </div>
-      <p className="competitive-benchmark__note">
+
+      <p className="mb-3 mt-3 text-sm leading-relaxed text-[#bdd0c3]">
         This comparison uses your current trip calculation. It highlights where VoltRoute adds
         evidence-based checks beyond a typical charger list.
       </p>
 
-      <div className="competitive-benchmark__table-wrap">
-        <table className="competitive-benchmark__table">
+      <div className="overflow-auto rounded-xl border border-[#405b49] bg-[#142a1f]">
+        <table className="min-w-[720px] w-full border-collapse">
           <thead>
             <tr>
-              <th>Planning area</th>
-              <th>VoltRoute (current trip)</th>
-              <th>Typical apps</th>
+              <th className="bg-[#193224] px-3 py-2 text-left text-xs uppercase tracking-wide text-[#aec5b6]">Planning area</th>
+              <th className="bg-[#193224] px-3 py-2 text-left text-xs uppercase tracking-wide text-[#aec5b6]">VoltRoute (current trip)</th>
+              <th className="bg-[#193224] px-3 py-2 text-left text-xs uppercase tracking-wide text-[#aec5b6]">Typical apps</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.area}>
-                <td>
-                  <span className={`competitive-state competitive-state--${row.state}`}>
+              <tr key={row.area} className="border-t border-[#2f4a3a] align-top text-sm leading-relaxed text-[#d7e4dc]">
+                <td className="px-3 py-2">
+                  <span className={`inline-flex items-center gap-2 font-semibold ${stateClass(row.state)}`}>
                     <StateIcon state={row.state} />
                     {row.area}
                   </span>
                 </td>
-                <td>{row.voltRoute}</td>
-                <td>{row.typicalApps}</td>
+                <td className="px-3 py-2">{row.voltRoute}</td>
+                <td className="px-3 py-2">{row.typicalApps}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      <div className="competitive-actions">
-        <h3>Make this trip even stronger</h3>
+      <div className="mt-3 rounded-xl border border-[#43604d] bg-[#162d21] p-3">
+        <h3 className="mb-1 text-sm font-semibold text-[#e4f2e9]">Make this trip even stronger</h3>
         {nextActions.length ? (
-          <ul>
+          <ul className="grid gap-1 pl-4 text-[0.82rem] leading-relaxed text-[#c7d8ce]">
             {nextActions.map((action) => (
               <li key={action}>{action}</li>
             ))}
           </ul>
         ) : (
-          <p>
+          <p className="text-[0.82rem] leading-relaxed text-[#c7d8ce]">
             Core confidence checks are covered for this plan. Re-run right before departure to
             refresh evidence.
           </p>
