@@ -4,7 +4,7 @@ import { Phone, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabaseBrowser } from '@/lib/supabase-client';
 
-const productionAuthCallback='https://voltroutes.com/callback';
+const productionAuthCallback='https://site-creator-vinext-starter.voltroutes.workers.dev/callback';
 const workerAuthCallback='https://site-creator-vinext-starter.voltroutes.workers.dev/callback';
 function oauthRedirectTarget() {
   if(typeof window==='undefined')return productionAuthCallback;
@@ -63,7 +63,7 @@ export function AccountAuth({open,onClose,supabaseUrl,supabaseKey}:{open:boolean
   async function startGoogleSignIn(){
     setBusy(true);setError('');setMessage('');
     try{
-      if(isLocalOrigin)setMessage('Localhost testing detected. Production users should sign in from voltroutes.com.');
+      if(isLocalOrigin)setMessage('Localhost testing detected. Production users should sign in from site-creator-vinext-starter.voltroutes.workers.dev.');
       window.location.assign(googleAuthorizeUrl(supabaseUrl));
     }catch(reason){
       const text=reason instanceof Error?reason.message:'Could not start Google sign-in.';

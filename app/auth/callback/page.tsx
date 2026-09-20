@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from "react";
 
-const productionSiteUrl = "https://voltroutes.com/";
+const productionSiteUrl = "https://site-creator-vinext-starter.voltroutes.workers.dev/";
 const workerSiteUrl = "https://site-creator-vinext-starter.voltroutes.workers.dev/";
 
 export default function AuthCallbackPage() {

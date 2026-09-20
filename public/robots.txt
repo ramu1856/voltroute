@@ -3,4 +3,4 @@ Allow: /
 Disallow: /api/
 Disallow: /signout-with-chatgpt
 
-Sitemap: https://voltroutes.com/sitemap.xml
+Sitemap: https://site-creator-vinext-starter.voltroutes.workers.dev/sitemap.xml

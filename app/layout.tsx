@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
-const siteUrl = "https://voltroutes.com";
+const siteUrl = "https://site-creator-vinext-starter.voltroutes.workers.dev";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
