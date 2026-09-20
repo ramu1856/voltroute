@@ -11,7 +11,7 @@ export default function ChargerMap({center,stations,selected,amenities,route,bac
  const choose=useRef(onSelect),focusRisk=useRef(onRiskFocus);
  useEffect(()=>{choose.current=onSelect;focusRisk.current=onRiskFocus;},[onSelect,onRiskFocus]);
  useEffect(()=>{let disposed=false;let resize:ResizeObserver|undefined;
-  import('leaflet').then(lib=>{if(disposed||!container.current)return;L.current=lib;const first=initialCenter.current;const m=lib.map(container.current,{scrollWheelZoom:false}).setView([first.lat,first.lon],12);map.current=m;
+  import('leaflet').then(lib=>{if(disposed||!container.current)return;L.current=lib;const first=initialCenter.current;const m=lib.map(container.current,{scrollWheelZoom:false,preferCanvas:true}).setView([first.lat,first.lon],12);map.current=m;
    lib.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,keepBuffer:0,updateWhenIdle:true,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).on('tileerror',()=>setError('Some map tiles could not load. The station list still works.')).addTo(m);
    m.on('zoomend moveend',()=>setViewRevision(v=>v+1));layer.current=lib.layerGroup().addTo(m);resize=new ResizeObserver(()=>m.invalidateSize());resize.observe(container.current);setReady(true);
   }).catch(()=>setError('Map could not load. Use the station list below.'));
@@ -20,16 +20,30 @@ export default function ChargerMap({center,stations,selected,amenities,route,bac
  useEffect(()=>{if(ready)map.current?.setView([center.lat,center.lon],12);},[ready,center.lat,center.lon]);
  useEffect(()=>{
   if(!ready||!L.current||!layer.current)return;const lib=L.current;layer.current.clearLayers();
+  const add=(lat:number,lon:number,text:string,color:string,radius:number,click?:()=>void)=>{const el=document.createElement('span');el.textContent=text;const marker=lib.circleMarker([lat,lon],{radius,fillColor:color,color:'#10241a',weight:2,fillOpacity:1}).bindTooltip(el).addTo(layer.current!);if(click)marker.on('click',click);};
   const hasRisks=riskSections.length>0;
-  if(route)lib.polyline(route.coordinates.map(([lon,lat])=>[lat,lon]),{color:hasRisks?'#9ca9b1':'#428cff',weight:4}).addTo(layer.current);
-  if(backupRoute)lib.polyline(backupRoute.coordinates.map(([lon,lat])=>[lat,lon]),{color:hasRisks?'#9ca9b1':'#f5a65b',weight:5,dashArray:'8 7'}).addTo(layer.current);
+  if(route){
+   lib.polyline(route.coordinates.map(([lon,lat])=>[lat,lon]),{color:hasRisks?'#9ca9b1':'#428cff',weight:4}).addTo(layer.current);
+   if(route.coordinates.length){
+    const [startLon,startLat]=route.coordinates[0];
+    const [endLon,endLat]=route.coordinates[route.coordinates.length-1];
+    add(startLat,startLon,'Trip start','#5b8def',6);
+    add(endLat,endLon,'Trip destination','#5b8def',8);
+   }
+  }
+  if(backupRoute){
+   lib.polyline(backupRoute.coordinates.map(([lon,lat])=>[lat,lon]),{color:hasRisks?'#9ca9b1':'#f5a65b',weight:5,dashArray:'8 7'}).addTo(layer.current);
+   if(backupRoute.coordinates.length){
+    const [backupEndLon,backupEndLat]=backupRoute.coordinates[backupRoute.coordinates.length-1];
+    add(backupEndLat,backupEndLon,'Backup destination','#f5a65b',7);
+   }
+  }
   for(const section of riskSections){
    const points=section.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]);
    if(section.id===focusedRiskId)lib.polyline(points,{color:'#fff',weight:10,opacity:.9,interactive:false}).addTo(layer.current);
    const label=document.createElement('span');label.textContent=`${section.path==='backup'?'Backup from main':'Main route'} · ${section.fromMile.toFixed(1)}–${section.toMile.toFixed(1)} mi · ${riskStyles[section.level].label}. ${section.reason} ${section.assumption||''}`;
    lib.polyline(points,{color:riskStyles[section.level].color,weight:section.id===focusedRiskId?7:6,dashArray:section.path==='backup'?'8 7':undefined}).bindTooltip(label,{sticky:true}).on('click',()=>focusRisk.current(section.id)).addTo(layer.current);
   }
-  const add=(lat:number,lon:number,text:string,color:string,radius:number,click?:()=>void)=>{const el=document.createElement('span');el.textContent=text;const marker=lib.circleMarker([lat,lon],{radius,fillColor:color,color:'#10241a',weight:2,fillOpacity:1}).bindTooltip(el).addTo(layer.current!);if(click)marker.on('click',click);};
   add(center.lat,center.lon,center.label,'#5b8def',8);
   const m=map.current!;
   const drawStation=(s:Station)=>{const info=availability.get(s.id);const role=s.id===mainId?'Main stop: ':s.id===backupId?'Backup stop: ':'';add(s.lat,s.lon,`${role}${s.name} · ${info?.label||'Status unknown'}`,info?.freshness==='live'?'#74db93':info?.freshness==='recent'?'#ffce70':'#a3adb0',selected?.id===s.id?12:8,()=>choose.current(s));};

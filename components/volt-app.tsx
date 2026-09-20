@@ -135,6 +135,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled)setFocusedRisk(null);});return()=>{cancelled=true;};},[smartPlan]);
  const requestId=useRef(0),routeId=useRef(0),liveId=useRef(0);
  const stationRequest=useRef<AbortController|null>(null),loadStationsRef=useRef(loadStations),loadAccountRef=useRef(loadAccount),selectedRef=useRef<Station|null>(null),refreshLiveRef=useRef<(station:Station)=>Promise<void>>(async()=>{});
+ const stationSnapshotCache=useRef<Map<string,DirectorySnapshot<Station[]>>>(new Map());
  useEffect(()=>()=>stationRequest.current?.abort(),[]);
  useEffect(()=>{const tick=()=>setHoursClock(Date.now());tick();const timer=window.setInterval(tick,30000);window.addEventListener('focus',tick);document.addEventListener('visibilitychange',tick);return()=>{window.clearInterval(timer);window.removeEventListener('focus',tick);document.removeEventListener('visibilitychange',tick);};},[]);
  const stationHours=useMemo(
@@ -147,10 +148,14 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const checkpoints=road&&tripSnapshot?chargingCheckpoints(road,tripSnapshot.profile,tripSnapshot.battery):[];
  async function loadAccount(){if(!accessToken)return [] as Saved[];try{const r=await api<{user:{name:string};items:Saved[]}>('/api/account',undefined,accessToken);setAccount(r.user.name);setSaved(r.items);setReports(Object.fromEntries(r.items.filter(i=>i.kind==='report').map(i=>[(i.payload as DriverReport).sourceId,{...i.payload as DriverReport,reportedAt:i.updated}])));setAccountError('');return r.items;}catch(e){setAccountError((e as Error).message);return [] as Saved[];}}
  async function loadStations(point:Point=origin,chosenRadius=radius){
+  const cacheKey=`${point.lat.toFixed(4)}:${point.lon.toFixed(4)}:${chosenRadius}`;
+  const cached=stationSnapshotCache.current.get(cacheKey);
   stationRequest.current?.abort();const controller=new AbortController();stationRequest.current=controller;
-  setSmartPlan(null);const id=++requestId.current;setLoading(true);setError('');setDirectoryNotice('');setCenter(point);setSearchedRadius(chosenRadius);setStations([]);setSelected(null);setFetchedAt('');
-  try{const r=await api<DirectorySnapshot<Station[]>>(`/api/explore?action=stations&lat=${point.lat}&lon=${point.lon}&radius=${chosenRadius}`,{signal:controller.signal});if(id!==requestId.current||controller.signal.aborted)return;setStations(r.data);setFetchedAt(r.fetchedAt);setDirectoryNotice(r.notice||'');setSelected(r.data[0]||null);}
-  catch(e){if(id===requestId.current&&!controller.signal.aborted)setError((e as Error).message);}
+  setSmartPlan(null);const id=++requestId.current;setLoading(!cached);setError('');setCenter(point);setSearchedRadius(chosenRadius);
+  if(cached){setStations(cached.data);setFetchedAt(cached.fetchedAt);setDirectoryNotice(cached.notice||'Showing cached listings while the latest map data refreshes.');setSelected(current=>cached.data.find(s=>s.id===current?.id)||cached.data[0]||null);}
+  else setDirectoryNotice('');
+  try{const r=await api<DirectorySnapshot<Station[]>>(`/api/explore?action=stations&lat=${point.lat}&lon=${point.lon}&radius=${chosenRadius}`,{signal:controller.signal});if(id!==requestId.current||controller.signal.aborted)return;stationSnapshotCache.current.set(cacheKey,r);setStations(r.data);setFetchedAt(r.fetchedAt);setDirectoryNotice(r.notice||'');setSelected(current=>r.data.find(s=>s.id===current?.id)||r.data[0]||null);}
+  catch(e){if(id===requestId.current&&!controller.signal.aborted){if(cached){setError('');setDirectoryNotice('Showing cached listings because the latest refresh failed. Retry in a moment.');}else setError((e as Error).message);}}
   finally{if(id===requestId.current&&!controller.signal.aborted)setLoading(false);}
  }
  async function refreshLive(station:Station){
