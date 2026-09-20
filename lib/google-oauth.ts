@@ -20,6 +20,8 @@ export async function startGoogleOAuthSignIn({ supabaseUrl, supabaseKey }: Googl
   });
   if (error) throw error;
   if (!data?.url) throw new Error('Google sign-in could not be started. Please retry.');
-  window.location.assign(data.url);
+  const authorizeUrl = new URL(data.url);
+  authorizeUrl.searchParams.set('redirect_to', WORKER_AUTH_CALLBACK_URL);
+  window.location.assign(authorizeUrl.toString());
   return { localNotice };
 }
