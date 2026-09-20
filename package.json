@@ -12,7 +12,9 @@
     "start": "node scripts/start-server.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
-    "qa:smart-stop": "node scripts/qa-smart-stop.mjs"
+    "qa:smart-stop": "node scripts/qa-smart-stop.mjs",
+    "qa:health": "node scripts/health-check.mjs",
+    "qa:d1": "node scripts/verify-d1-persistence.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

@@ -3,26 +3,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Phone, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabaseBrowser } from '@/lib/supabase-client';
+import { WORKER_AUTH_CALLBACK_URL, WORKER_SITE_ORIGIN, isLocalhostOrigin } from '@/lib/site-config';
 
-const productionAuthCallback='https://site-creator-vinext-starter.voltroutes.workers.dev/callback';
-const workerAuthCallback='https://site-creator-vinext-starter.voltroutes.workers.dev/callback';
 function oauthRedirectTarget() {
-  if(typeof window==='undefined')return productionAuthCallback;
-  const origin=window.location.origin.toLowerCase();
-  if(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin))return productionAuthCallback;
-  if(origin==='https://site-creator-vinext-starter.voltroutes.workers.dev')return workerAuthCallback;
-  if(origin==='https://voltroutes.com'||origin==='https://www.voltroutes.com')return productionAuthCallback;
-  return productionAuthCallback;
-}
-function googleAuthorizeUrl(supabaseUrl:string){
-  const base=supabaseUrl.replace(/\/+$/,'');
-  const url=new URL('/auth/v1/authorize',base);
-  url.searchParams.set('provider','google');
-  url.searchParams.set('redirect_to',oauthRedirectTarget());
-  url.searchParams.set('scopes','openid email profile');
-  url.searchParams.set('prompt','consent select_account');
-  url.searchParams.set('access_type','offline');
-  return url.toString();
+  if(typeof window==='undefined')return WORKER_AUTH_CALLBACK_URL;
+  const origin=window.location.origin;
+  if(isLocalhostOrigin(origin))return WORKER_AUTH_CALLBACK_URL;
+  return WORKER_AUTH_CALLBACK_URL;
 }
 function normalizeUsPhone(value:string){
   const digits=value.replace(/\D/g,'');
@@ -33,6 +20,8 @@ function normalizeUsPhone(value:string){
 
 export function AccountAuth({open,onClose,supabaseUrl,supabaseKey}:{open:boolean;onClose:()=>void;supabaseUrl:string;supabaseKey:string}) {
   const [phone,setPhone]=useState('');
+  const [otpCode,setOtpCode]=useState('');
+  const [otpPhone,setOtpPhone]=useState<string|null>(null);
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
   const [error,setError]=useState('');
@@ -40,8 +29,9 @@ export function AccountAuth({open,onClose,supabaseUrl,supabaseKey}:{open:boolean
   const [phoneEnabled,setPhoneEnabled]=useState<boolean|null>(null);
   const usPhone=useMemo(()=>normalizeUsPhone(phone),[phone]);
   const phoneInputValid=usPhone!==null;
+  const otpCodeValid=/^\d{6}$/.test(otpCode.trim());
   const canUseAuthConfig=open&&!!supabaseUrl&&!!supabaseKey;
-  const isLocalOrigin=typeof window!=='undefined'&&/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(window.location.origin);
+  const isLocalOrigin=typeof window!=='undefined'&&isLocalhostOrigin(window.location.origin);
   useEffect(()=>{
     let cancelled=false;
     if(!canUseAuthConfig)return;
@@ -63,8 +53,20 @@ export function AccountAuth({open,onClose,supabaseUrl,supabaseKey}:{open:boolean
   async function startGoogleSignIn(){
     setBusy(true);setError('');setMessage('');
     try{
-      if(isLocalOrigin)setMessage('Localhost testing detected. Production users should sign in from site-creator-vinext-starter.voltroutes.workers.dev.');
-      window.location.assign(googleAuthorizeUrl(supabaseUrl));
+      if(isLocalOrigin)setMessage(`Localhost testing detected. Production users should sign in from ${WORKER_SITE_ORIGIN}.`);
+      const client=supabaseBrowser({url:supabaseUrl,key:supabaseKey});
+      const {data,error:oauthError}=await client.auth.signInWithOAuth({
+        provider:'google',
+        options:{
+          redirectTo:oauthRedirectTarget(),
+          scopes:'openid email profile',
+          queryParams:{prompt:'consent select_account',access_type:'offline'},
+          skipBrowserRedirect:true,
+        },
+      });
+      if(oauthError)throw oauthError;
+      if(!data?.url)throw new Error('Google sign-in could not be started. Please retry.');
+      window.location.assign(data.url);
     }catch(reason){
       const text=reason instanceof Error?reason.message:'Could not start Google sign-in.';
       if(text.toLowerCase().includes('provider'))setError('Google sign-in is not enabled yet. Enable Google provider and try again.');
@@ -77,9 +79,28 @@ export function AccountAuth({open,onClose,supabaseUrl,supabaseKey}:{open:boolean
       if(!usPhone)throw new Error('Enter a valid US number with 10 digits.');
       const {error:authError}=await supabaseBrowser({url:supabaseUrl,key:supabaseKey}).auth.signInWithOtp({phone:usPhone,options:{channel:'sms'}});
       if(authError)throw authError;
-      setMessage('SMS code sent to your US number. Enter the OTP to finish sign-in.');
+      setOtpPhone(usPhone);
+      setOtpCode('');
+      setMessage('SMS code sent. Enter the 6-digit OTP to finish sign-in.');
     }catch(reason){
       const text=reason instanceof Error?reason.message:'Could not start phone sign-in.';
+      setError(text);
+    }finally{setBusy(false);}
+  }
+  async function verifyPhoneOtp(){
+    setBusy(true);setError('');setMessage('');
+    try{
+      if(!otpPhone)throw new Error('Request an OTP first.');
+      const token=otpCode.trim();
+      if(!/^\d{6}$/.test(token))throw new Error('Enter the 6-digit SMS code.');
+      const {error:verifyError}=await supabaseBrowser({url:supabaseUrl,key:supabaseKey}).auth.verifyOtp({phone:otpPhone,token,type:'sms'});
+      if(verifyError)throw verifyError;
+      setMessage('Phone sign-in completed.');
+      setOtpCode('');
+      setOtpPhone(null);
+      onClose();
+    }catch(reason){
+      const text=reason instanceof Error?reason.message:'Could not verify OTP.';
       setError(text);
     }finally{setBusy(false);}
   }
@@ -89,7 +110,7 @@ export function AccountAuth({open,onClose,supabaseUrl,supabaseKey}:{open:boolean
       <button className="auth-close" type="button" aria-label="Close sign in" onClick={onClose}><X/></button>
       <h2 id="auth-title">Sign up or sign in</h2>
       <p>Step 1: Continue with Google (recommended for all users).</p>
-      <Button className="full auth-google" disabled={busy||!canUseAuthConfig} onClick={()=>void startGoogleSignIn()}>
+      <Button className="full auth-google" disabled={busy||!canUseAuthConfig||googleEnabled===false} onClick={()=>void startGoogleSignIn()}>
         <span className="auth-google-mark" aria-hidden="true">G</span>
         {busy?'Opening Google…':'Continue with Google'}
       </Button>
@@ -100,6 +121,8 @@ export function AccountAuth({open,onClose,supabaseUrl,supabaseKey}:{open:boolean
         <p>Optional backup: US phone number OTP (+1).</p>
         <label className="form-label">US phone number<input type="tel" autoComplete="tel" value={phone} onChange={event=>setPhone(event.target.value)} placeholder="(555) 123-4567"/></label>
         <Button className="full" disabled={busy||!canUseAuthConfig||!phoneInputValid||phoneEnabled===false} onClick={()=>void startPhoneSignIn()}><Phone/>{busy?'Sending OTP…':'Send US phone OTP'}</Button>
+        {otpPhone&&<label className="form-label">Enter 6-digit OTP<input type="text" inputMode="numeric" autoComplete="one-time-code" value={otpCode} onChange={event=>setOtpCode(event.target.value.replace(/\D/g,'').slice(0,6))} placeholder="123456"/></label>}
+        {otpPhone&&<Button className="full" variant="outline" disabled={busy||!otpCodeValid} onClick={()=>void verifyPhoneOtp()}>{busy?'Verifying…':'Verify OTP'}</Button>}
         {!phoneInputValid&&phone.trim().length>0&&<p className="auth-muted" role="status">Enter a valid US number (10 digits). We convert it to +1 format.</p>}
         {canUseAuthConfig&&phoneEnabled===false&&<p className="auth-muted" role="status">US phone OTP is not enabled yet.</p>}
       </div>

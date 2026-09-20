@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { healthStateLabel, type ProviderHealthSnapshot } from '@/lib/provider-health';
 
 function tone(state: 'up' | 'degraded' | 'down') {
@@ -14,6 +15,7 @@ export function ProviderHealthPanel() {
   const [snapshot, setSnapshot] = useState<ProviderHealthSnapshot | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(true);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,11 +35,13 @@ export function ProviderHealthPanel() {
       }
     }
     void load();
+    const refresh = window.setInterval(() => setTick(value => value + 1), 60000);
     return () => {
       cancelled = true;
       controller.abort();
+      window.clearInterval(refresh);
     };
-  }, []);
+  }, [tick]);
 
   return (
     <section className="mt-5 rounded-xl border border-[#32453a] bg-[#102015] p-4" aria-live="polite">
@@ -45,6 +49,12 @@ export function ProviderHealthPanel() {
       <p className="mb-3 text-[0.85rem] text-[#c2d6ca]">
         This checks connectivity to the route and charger-directory providers right now.
       </p>
+      <div className="mb-3">
+        <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setTick(value => value + 1)}>
+          <RefreshCw size={14} /> {busy ? 'Refreshing…' : 'Refresh now'}
+        </Button>
+        {snapshot?.generatedAt && <small className="ml-2 text-[0.78rem] text-[#a8bdb1]">Last checked: {new Date(snapshot.generatedAt).toLocaleTimeString()}</small>}
+      </div>
       {busy && (
         <p className="flex items-center gap-2 text-[0.85rem] text-[#c2d6ca]">
           <Loader2 size={15} className="animate-spin" /> Checking provider status...

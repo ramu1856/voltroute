@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { database, failure, limit, requireUser, sameOrigin, ServiceError } from '@/lib/server-data';
 import { pointSchema, profileSchema, tripSchema } from '@/lib/ev';
-const stationSchema=pointSchema.extend({sourceId:z.string().regex(/^(node|way|relation)\/\d+$/)});
-const reportSchema=z.object({sourceId:z.string().regex(/^(node|way|relation)\/\d+$/),stationName:z.string().trim().min(1).max(160),status:z.enum(['working','busy','broken']),note:z.string().trim().max(240).default('')});
+const stationSourceId=/^(?:(node|way|relation)\/\d+|tomtom\/[A-Za-z0-9._,:-]+)$/;
+const stationSchema=pointSchema.extend({sourceId:z.string().regex(stationSourceId)});
+const reportSchema=z.object({sourceId:z.string().regex(stationSourceId),stationName:z.string().trim().min(1).max(160),status:z.enum(['working','busy','broken']),note:z.string().trim().max(240).default('')});
 const saveSchema=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('profile'),payload:profileSchema}),
  z.object({kind:z.literal('station'),payload:stationSchema}),

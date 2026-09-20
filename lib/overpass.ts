@@ -1,5 +1,6 @@
 import type { OSMElement } from './ev.ts';
 import { ServiceError } from './service-error.ts';
+import { WORKER_SITE_URL } from './site-config.ts';
 
 // Both operators publish global OSM coverage and allow use by small projects.
 // Keep these independent: alternate hostnames of one service are not a backup.
@@ -44,7 +45,7 @@ export async function fetchOverpass(query: string, options: OverpassOptions = {}
       try {
         const response = await (options.fetcher || fetch)(endpoint, {
           method: 'POST', body: new URLSearchParams({ data: query }),
-          headers: { Accept: 'application/json', 'User-Agent': 'VoltRoute/2.0 (+https://voltroutes.com)' },
+                headers: { Accept: 'application/json', 'User-Agent': `VoltRoute/2.0 (+${WORKER_SITE_URL})` },
           signal: AbortSignal.timeout(options.timeoutMs ?? 24000),
         });
         if (response.status === 429 || response.status === 406) {

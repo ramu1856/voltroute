@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
+import { WORKER_SITE_URL, isLocalhostOrigin } from "@/lib/site-config";
 
-const productionSiteUrl = "https://site-creator-vinext-starter.voltroutes.workers.dev/";
-const workerSiteUrl = "https://site-creator-vinext-starter.voltroutes.workers.dev/";
+const productionSiteUrl = WORKER_SITE_URL;
+const workerSiteUrl = WORKER_SITE_URL;
 
 export default function AuthCallbackPage() {
   const target = useMemo(() => {
     if (typeof window === "undefined") return null;
     const currentOrigin = window.location.origin;
-    const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(currentOrigin);
+    const isLocal = isLocalhostOrigin(currentOrigin);
     const normalized = currentOrigin.toLowerCase();
     const origin = isLocal
       ? currentOrigin
