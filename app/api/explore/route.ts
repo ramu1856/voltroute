@@ -115,8 +115,7 @@ export async function GET(request:Request) {
       return normalizeAmenities(elements,point);
     });
     if(action==='stations'&&usedTomTomFallback){
-      const notice=[result.notice,'Community directory refresh was unavailable, so TomTom fallback station listings are shown.'].filter(Boolean).join(' ');
-      return Response.json({...result,notice},{headers:{'Cache-Control':'private, no-store'}});
+      return Response.json(result,{headers:{'Cache-Control':'private, no-store'}});
     }
     return Response.json(result,{headers:{'Cache-Control':'private, no-store'}});
   }
