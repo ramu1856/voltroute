@@ -3,15 +3,32 @@ import { requireSupabaseUser } from './supabase-server.ts';
 import { LocalRateLimitError, ServiceError } from './service-error.ts';
 import { loadDirectory } from './directory-cache.ts';
 export { LocalRateLimitError, ServiceError } from './service-error.ts';
+const memoryRateLimits=new Map<string,number>();
+const memoryCache=new Map<string,{payload:string;expires:number}>();
+function hasDatabase(){return !!env.DB;}
 export function database() { if(!env.DB) throw new Error('Account storage is temporarily unavailable. Please try again later.'); return env.DB; }
 export async function requireUser(request:Request) {return requireSupabaseUser(request);}
 export function sameOrigin(request:Request) { if(request.headers.get('origin')!==new URL(request.url).origin) throw new ServiceError('This request must come from VoltRoute.',403); }
 export async function limit(key:string,ms:number) {
   const now=Date.now();
+  if(!hasDatabase()){
+    const next=memoryRateLimits.get(key)||0;
+    if(next>now) throw new LocalRateLimitError();
+    memoryRateLimits.set(key,now+ms);
+    return;
+  }
   const result=await database().prepare('INSERT INTO provider_limits (key,next) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET next=excluded.next WHERE provider_limits.next <= ? RETURNING key').bind(key,now+ms,now).first();
   if(!result) throw new LocalRateLimitError();
 }
 export async function cached<T>(key:string,provider:string,seconds:number,loader:()=>Promise<T>):Promise<{data:T; fetchedAt:string}> {
+  if(!hasDatabase()){
+    const hit=memoryCache.get(key);
+    if(hit&&hit.expires>Date.now()) return JSON.parse(hit.payload);
+    await limit(`provider:${provider}`,2500);
+    const data=await loader();const value={data,fetchedAt:new Date().toISOString()};
+    memoryCache.set(key,{payload:JSON.stringify(value),expires:Date.now()+seconds*1000});
+    return value;
+  }
   const db=database();
   const hit=await db.prepare('SELECT payload FROM provider_cache WHERE key=? AND expires>?').bind(key,Date.now()).first<{payload:string}>();
   if(hit) return JSON.parse(hit.payload);
@@ -21,6 +38,17 @@ export async function cached<T>(key:string,provider:string,seconds:number,loader
   return value;
 }
 export async function cachedDirectory<T>(key:string,loader:()=>Promise<T>) {
+  if(!hasDatabase()){
+    return loadDirectory({
+      read:async()=>memoryCache.get(key)||null,
+      write:async row=>{memoryCache.set(key,row);},
+      refresh:async()=>{
+        try { await limit('provider:overpass',2500); }
+        catch(error) { if(!(error instanceof LocalRateLimitError))throw error;await new Promise(resolve=>setTimeout(resolve,2600));await limit('provider:overpass',2500); }
+        return loader();
+      },
+    });
+  }
   const db=database();
   return loadDirectory({
     read:()=>db.prepare('SELECT payload,expires FROM provider_cache WHERE key=?').bind(key).first<{payload:string;expires:number}>(),

@@ -19,6 +19,8 @@ This starter does not use `wrangler.jsonc`.
 
 `install:ci` runs `npm ci` once against the shared lockfile, disables parent-workspace discovery, and includes required dev/optional dependencies despite production/omit settings. Sharp defaults to prebuilt binaries unless explicitly configured otherwise. Do not overlap installers.
 
+Production deploys include the `DB` D1 binding only when `CLOUDFLARE_D1_DATABASE_ID` is provided. Without that variable, routing and planning APIs still run with in-memory cache/rate-limit fallbacks, while account persistence stays unavailable.
+
 - **Portable:** Preserve host HOME, npm cache, registry, proxy, temporary paths, retry/concurrency settings, and lifecycle-script policy. Use `--prefer-offline --no-audit --no-fund`.
 - **Managed Linux:** Use the existing project-local HOME/cache/tmp setup and Linux install lock, tarball preflight, and timeout. Restore the image-seeded npm cache only when its lockfile hash matches; retain network fallback. Builds keep their existing timeout. These helpers are not invoked by the portable profile.
 

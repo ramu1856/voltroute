@@ -8,6 +8,13 @@ const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
 
 const { d1, r2 } = hostingConfig;
+const configuredD1DatabaseId = process.env.CLOUDFLARE_D1_DATABASE_ID?.trim();
+const includeD1Binding =
+  !!d1 &&
+  (!!configuredD1DatabaseId ||
+    process.env.NODE_ENV !== "production");
+const d1DatabaseId =
+  configuredD1DatabaseId || SITE_CREATOR_PLACEHOLDER_DATABASE_ID;
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
@@ -16,12 +23,12 @@ const managedLinux = readExecutionProfile() === "managed-linux";
 const localBindingConfig = {
   main: "vinext/server/fetch-handler",
   compatibility_flags: ["nodejs_compat"],
-  d1_databases: d1
+  d1_databases: includeD1Binding
     ? [
         {
           binding: d1,
           database_name: "site-creator-d1",
-          database_id: SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
+          database_id: d1DatabaseId,
         },
       ]
     : [],
