@@ -29,12 +29,12 @@ export async function GET(request:Request) {
     try{
       const nearbyUrl=new URL('/search/2/nearbySearch/.json','https://api.tomtom.com');
       nearbyUrl.search=new URLSearchParams({key:apiKey,lat:String(point.lat),lon:String(point.lon),radius:'650',limit:'12',connectorSet:tomtomConnector}).toString();
-      const nearby=await cached(`tomtom-nearby:v1:${point.lat.toFixed(4)}:${point.lon.toFixed(4)}:${tomtomConnector}`,'tomtom',120,async()=>fetchJson(nearbyUrl.href) as Promise<{results:unknown[]}>);
+      const nearby=await cached(`tomtom-nearby:v1:${point.lat.toFixed(4)}:${point.lon.toFixed(4)}:${tomtomConnector}`,'tomtom-nearby',120,async()=>fetchJson(nearbyUrl.href) as Promise<{results:unknown[]}>);
       const source=chooseTomTomAvailabilitySource((nearby.data.results||[]) as Parameters<typeof chooseTomTomAvailabilitySource>[0],{...point,name,network});
       if(!source)return Response.json({data:null,notice:'No matching TomTom live-availability station was confirmed near this map listing.'},{headers:{'Cache-Control':'private, no-store'}});
       const availabilityUrl=new URL('/search/2/chargingAvailability.json','https://api.tomtom.com');
       availabilityUrl.search=new URLSearchParams({key:apiKey,chargingAvailability:source.id,connectorSet:tomtomConnector}).toString();
-      const availability=await cached(`tomtom-live:v1:${source.id}:${tomtomConnector}`,'tomtom',60,async()=>fetchJson(availabilityUrl.href));
+      const availability=await cached(`tomtom-live:v1:${source.id}:${tomtomConnector}`,'tomtom-live',60,async()=>fetchJson(availabilityUrl.href));
       const observation=tomTomOperatorObservation(stationId,availability.data as Parameters<typeof tomTomOperatorObservation>[1],availability.fetchedAt);
       return Response.json({data:observation,matched:{name:source.name,distanceMiles:source.distanceMiles},fetchedAt:availability.fetchedAt,notice:observation?null:'TomTom matched the station, but current connector availability was not usable.'},{headers:{'Cache-Control':'private, no-store'}});
     }catch(error){
