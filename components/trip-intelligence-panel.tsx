@@ -48,6 +48,7 @@ export function TripIntelligencePanel({ result, assessment, now }: Props) {
   const budget = tripBudget(result, now);
   const budgetStop = budget.stops[0] ?? null;
   const noChargeNeeded = result.state === 'no-charge-needed';
+  const routeItinerary = result.itinerary;
   const destinationBattery = noChargeNeeded
     ? arrivalBattery(result.input, result.route.miles)
     : budgetStop?.reachesDestination
@@ -56,9 +57,11 @@ export function TripIntelligencePanel({ result, assessment, now }: Props) {
   const arrival = stop ? stop.arrivalBattery : destinationBattery;
   const tripEta = noChargeNeeded
     ? result.route.minutes
-    : budgetStop?.reachesDestination && budgetStop.driveChargeMinutes !== null
-      ? budgetStop.driveChargeMinutes
-      : null;
+    : routeItinerary?.status === 'complete'
+      ? routeItinerary.totalDriveMinutes + (routeItinerary.totalChargeMinutes ?? 0)
+      : budgetStop?.reachesDestination && budgetStop.driveChargeMinutes !== null
+        ? budgetStop.driveChargeMinutes
+        : null;
   const price = budgetStop?.price ?? result.selectedPrice ?? null;
   const gapCount = assessment?.sections.filter((section) => section.level === 'gap').length ?? 0;
   const reviewCount =
@@ -247,7 +250,9 @@ export function TripIntelligencePanel({ result, assessment, now }: Props) {
               {tripEta !== null
                 ? noChargeNeeded
                   ? 'Driving time only. Traffic is not included.'
-                  : 'Driving + planned charging time. Traffic and queue time are not included.'
+                  : routeItinerary?.status === 'complete'
+                    ? 'Driving + all planned charging sessions in the current itinerary. Queue changes and traffic are not included.'
+                    : 'Driving + planned charging time. Traffic and queue time are not included.'
                 : 'Complete ETA needs a route that this plan can cover plus charging-time inputs.'}
             </small>
           </article>
@@ -279,7 +284,7 @@ export function TripIntelligencePanel({ result, assessment, now }: Props) {
             </small>
             <small>
               {itinerary?.projectedStops
-                ? `${itinerary.projectedStops} estimated additional charging stop${itinerary.projectedStops === 1 ? '' : 's'} after this stop.`
+                ? `${itinerary?.projectedStops} estimated additional charging stop${itinerary?.projectedStops === 1 ? '' : 's'} after this stop.`
                 : itinerary?.status === 'not-needed'
                   ? 'No extra charging stops projected.'
                   : 'Projection is limited by current battery assumptions.'}
