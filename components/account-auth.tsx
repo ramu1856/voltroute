@@ -4,11 +4,9 @@ import { Phone, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabaseBrowser } from '@/lib/supabase-client';
 
-const hostedAuthFallback='https://site-creator-vinext-starter.voltroutes.workers.dev';
+const hostedAuthCallback='https://site-creator-vinext-starter.voltroutes.workers.dev/auth/callback';
 function oauthRedirectTarget() {
-  const url=new URL('/auth/callback',hostedAuthFallback);
-  if(typeof window!=='undefined')url.searchParams.set('returnTo',window.location.origin);
-  return url.toString();
+  return hostedAuthCallback;
 }
 function normalizeUsPhone(value:string){
   const digits=value.replace(/\D/g,'');
