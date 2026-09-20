@@ -122,6 +122,37 @@ export function parseListedEnergyRate(text: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
+type PriceEstimate = { rate: number; source: string; detail: string };
+function estimatedNetworkRate(station: Station): PriceEstimate {
+  const text = `${station.network} ${station.name}`.toLowerCase();
+  const fromKnownNetwork = (rate: number, source: string, range: string): PriceEstimate => ({
+    rate,
+    source,
+    detail: `Estimated from typical ${source} public pricing (${range}) because this station listing has no usable per-kWh tariff. Verify in the operator app before travel.`,
+  });
+  if (text.includes('tesla') || text.includes('supercharger')) return fromKnownNetwork(0.44, 'Tesla network estimate', '$0.36-$0.56/kWh');
+  if (text.includes('electrify america')) return fromKnownNetwork(0.48, 'Electrify America estimate', '$0.42-$0.64/kWh');
+  if (text.includes('evgo')) return fromKnownNetwork(0.52, 'EVgo estimate', '$0.45-$0.69/kWh');
+  if (text.includes('chargepoint')) return fromKnownNetwork(0.40, 'ChargePoint estimate', '$0.25-$0.55/kWh');
+  if (text.includes('blink')) return fromKnownNetwork(0.49, 'Blink estimate', '$0.35-$0.65/kWh');
+  if (text.includes('shell recharge') || text.includes('greenlots')) return fromKnownNetwork(0.46, 'Shell Recharge estimate', '$0.35-$0.62/kWh');
+  if (text.includes('bp pulse')) return fromKnownNetwork(0.45, 'BP Pulse estimate', '$0.34-$0.60/kWh');
+  if (text.includes('ev connect')) return fromKnownNetwork(0.43, 'EV Connect estimate', '$0.30-$0.58/kWh');
+  if (text.includes('francis energy')) return fromKnownNetwork(0.47, 'Francis Energy estimate', '$0.36-$0.62/kWh');
+  if ((station.power ?? 0) >= 100) {
+    return {
+      rate: 0.46,
+      source: 'Fast charging market estimate',
+      detail: 'Estimated from common US DC fast-charging public rates because this listing has no usable tariff. Typical range is about $0.34-$0.64 per kWh; verify before travel.',
+    };
+  }
+  return {
+    rate: 0.30,
+    source: 'Public charging market estimate',
+    detail: 'Estimated from common US public charging rates because this listing has no usable tariff. Typical range is about $0.18-$0.45 per kWh; verify before travel.',
+  };
+}
+
 export function evaluatePrice(station: Station, enteredRate: string | undefined, now: number): PriceInfo {
   const unavailable: PriceInfo = { confidence: 'unavailable', label: 'Unavailable', rate: null, source: 'No usable energy rate', sourceUrl: null, observedAt: null, detail: 'No single per-kWh price is supplied. Leave the estimate blank until you have a rate.', inputError: null };
   if (enteredRate !== undefined && enteredRate.trim() !== '') {
@@ -140,7 +171,9 @@ export function evaluatePrice(station: Station, enteredRate: string | undefined,
   const rate = parseListedEnergyRate(station.fee);
   if (rate !== null) return { confidence: 'estimated', label: 'Estimated', rate, source: 'OpenStreetMap listing', sourceUrl: webUrl(station.sourceUrl), observedAt: null,
     detail: rate === 0 ? 'Listed as free by the community. Confirm charging and parking charges with the operator.' : 'Community-listed rate. Its tariff verification date is unknown and it may be outdated. Confirm with the operator.', inputError: null };
-  return { ...unavailable, source: 'OpenStreetMap listing', sourceUrl: webUrl(station.sourceUrl), detail: station.fee === 'Price not listed' ? unavailable.detail : 'The listing does not supply one usable USD per-kWh rate. Its original tariff text is shown below; no rate has been assumed.' };
+  const estimated = estimatedNetworkRate(station);
+  return { confidence: 'estimated', label: 'Estimated', rate: estimated.rate, source: estimated.source, sourceUrl: webUrl(station.sourceUrl), observedAt: null,
+    detail: station.fee === 'Price not listed' ? estimated.detail : `Original tariff text could not be converted to one USD per-kWh value. ${estimated.detail}`, inputError: null };
 }
 
 export function estimateCharge(range: number, from: number, to: number, power: number | null, rate: number | null) {
