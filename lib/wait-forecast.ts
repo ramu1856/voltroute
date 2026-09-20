@@ -113,3 +113,49 @@ export function predictWaitForecast(availability: AvailabilityInfo | null | unde
     'A live queue or free-port feed is not available for this station right now.',
   );
 }
+
+export function predictWaitAtEta(
+  availability: AvailabilityInfo | null | undefined,
+  etaMinutes: number,
+): WaitForecast {
+  const base = predictWaitForecast(availability);
+  if (base.minMinutes === null || base.maxMinutes === null) return base;
+  if (!Number.isFinite(etaMinutes) || etaMinutes <= 0) return base;
+
+  if (etaMinutes <= 15) {
+    return {
+      ...base,
+      maxMinutes: base.maxMinutes + 5,
+      detail: `${base.detail} Arrival in ~${Math.round(etaMinutes)} minutes adds small uncertainty.`,
+    };
+  }
+  if (etaMinutes <= 45) {
+    return {
+      ...base,
+      confidence: base.confidence === 'higher' ? 'moderate' : 'low',
+      minMinutes: Math.max(0, base.minMinutes - 3),
+      maxMinutes: base.maxMinutes + 12,
+      label: 'Arrival-time queue estimate',
+      detail: `${base.detail} Arrival in ~${Math.round(etaMinutes)} minutes increases queue uncertainty.`,
+    };
+  }
+  if (etaMinutes <= 120) {
+    return {
+      state: 'uncertain',
+      confidence: 'low',
+      minMinutes: Math.max(5, base.minMinutes),
+      maxMinutes: base.maxMinutes + 20,
+      label: 'Long-horizon queue allowance',
+      detail: 'Arrival is more than 45 minutes away, so this queue window is a rough allowance only.',
+    };
+  }
+
+  return {
+    state: 'unavailable',
+    confidence: 'low',
+    minMinutes: null,
+    maxMinutes: null,
+    label: 'Queue estimate unavailable',
+    detail: 'Arrival is too far out for a meaningful queue estimate from current observations.',
+  };
+}

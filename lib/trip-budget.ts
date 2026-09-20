@@ -37,6 +37,20 @@ export function stopBudget(stop:RankedStop,input:SmartStopInput,now:number):Stop
 // It is conditional on the planned charge succeeding, not a final operator bill.
 export function tripBudget(result:SmartStopResult,now:number):TripBudget{
   if(isSmartStopExpired(result,now))return {state:'unavailable',total:null,knownSubtotal:null,energyKwh:null,stops:[],message:'Recalculate this plan before using its charging budget.',missing:['The plan or its supporting evidence is no longer current.']};
+  if(result.itinerary?.stops?.length){
+    const stops=result.itinerary.stops.map(stop=>{
+      const price=evaluatePrice(stop.station,result.input.enteredRates?.[stop.station.id],now+(stop.legMinutes+(stop.chargeMinutes??0))*60_000);
+      const energyCost=stop.energyKwh!==null&&price.rate!==null?stop.energyKwh*price.rate:null;
+      const missing:string[]=[];
+      if(stop.energyKwh===null)missing.push('Enter usable battery capacity to estimate charging energy.');
+      if(price.rate===null)missing.push(price.inputError||'A usable price for this station is missing.');
+      return {stationId:stop.station.id,stationName:stop.station.name,arrivalBattery:stop.arrivalBattery,targetBattery:stop.targetBattery,destinationBattery:Math.max(0,stop.targetBattery-stop.destinationMilesAfterStop/result.input.profile.range*100),reachesDestination:stop.destinationReachableAfterCharge,energyKwh:stop.energyKwh,chargeMinutes:stop.chargeMinutes,driveChargeMinutes:stop.chargeMinutes===null?null:stop.legMinutes+stop.chargeMinutes,price,energyCost,missing};
+    });
+    const knownSubtotal=stops.reduce<number|null>((sum,stop)=>stop.energyCost===null||sum===null?null:sum+stop.energyCost,0);
+    const complete=result.itinerary.status==='complete'&&stops.every(stop=>stop.energyCost!==null);
+    const energyKwh=stops.some(stop=>stop.energyKwh===null)?null:stops.reduce((sum,stop)=>sum+(stop.energyKwh||0),0);
+    return {state:complete?'complete':knownSubtotal!==null?'partial':'unavailable',total:complete&&knownSubtotal!==null?knownSubtotal:null,knownSubtotal,energyKwh,stops,message:complete?`Estimated charging energy covers ${stops.length} planned stop${stops.length===1?'':'s'} in this itinerary.`:result.itinerary.status==='partial'?'Known costs are shown for priced stops; the itinerary still needs more validated charging coverage.':'Only priced stops are subtotaled. Full-trip charging cost is still unavailable.',missing:[...new Set(stops.flatMap(stop=>stop.missing))]};
+  }
   if(result.state==='no-charge-needed'&&result.input.battery-result.route.miles/result.input.profile.range*100+1e-8>=result.input.reserve){return {state:'complete',total:0,knownSubtotal:0,energyKwh:0,stops:[],message:'No additional charging is needed on this route under your entered range and reserve.',missing:[]};}
   if(result.state!=='suggested'||!result.selected)return {state:'unavailable',total:null,knownSubtotal:null,energyKwh:null,stops:[],message:'A charging plan is needed before a trip budget can be shown.',missing:['No charging stop is recommended under the current settings.']};
   const stop=stopBudget(result.selected,result.input,now),complete=stop.reachesDestination&&stop.energyCost!==null;
