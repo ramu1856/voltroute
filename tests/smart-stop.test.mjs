@@ -22,8 +22,11 @@ test('short straight-line separation does not bypass an unreachable road leg',()
   const close={...station(),lat:input.origin.lat,lon:input.origin.lon};
   assert.equal(ranked([candidate(close,{toMiles:200,onwardMiles:85})]).ranked.length,0);
 });
-test('known failures, planned stations, mismatched connectors and restricted access are excluded',()=>{
-  for(const [s,why] of [[station(1,{status:'closed'}),'unavailable'],[station(2,{status:'planned'}),'unavailable'],[{...station(3),connectors:[]},'connector'],[station(4,{access:'permit'}),'access']])assert.equal(ranked([candidate(s)]).excluded[why],1);
+test('known failures, connector mismatches and restricted access are excluded while unknown connectors are provisional',()=>{
+  for(const [s,why] of [[station(1,{status:'closed'}),'unavailable'],[station(2,{status:'planned'}),'unavailable'],[station(3,{'socket:type1_combo':'0','socket:type1':'1'}),'connector'],[station(4,{access:'permit'}),'access']])assert.equal(ranked([candidate(s)]).excluded[why],1);
+  const unknown=ranked([candidate({...station(5),connectors:[]})]).ranked[0];
+  assert.equal(unknown.station.id,'node/5');
+  assert.ok(unknown.warnings.some(w=>w.includes('compatibility')));
   const report={sourceId:'node/1',status:'broken',reportedAt:now-60000};
   assert.equal(ranked([candidate()],input,{'node/1':report}).excluded.unavailable,1);
 });

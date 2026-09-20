@@ -48,12 +48,23 @@ export async function POST(request:Request){
       const elements=await fetchOverpass(query,{endpoints:overpassEndpoints(settings)});
       return {stations:elements.slice(0,400).map(e=>normalizeStation(e,input.origin)).filter((station):station is Station=>station!==null),limited:elements.length>400};
     });
-    result.mappedCount=directory.data.stations.length;result.directoryFetchedAt=directory.fetchedAt;result.searchLimited=directory.data.limited;
+    let mapped=directory.data;
+    let mappedFetchedAt=directory.fetchedAt;
+    if(!mapped.stations.length){
+      try{
+        // Cached empty station lists can occur during short provider outages.
+        // Retry once directly so a stale empty cache does not block planning.
+        const recoveryElements=await fetchOverpass(query,{endpoints:overpassEndpoints(settings)});
+        const recoveryStations=recoveryElements.slice(0,400).map(e=>normalizeStation(e,input.origin)).filter((station):station is Station=>station!==null);
+        if(recoveryStations.length){mapped={stations:recoveryStations,limited:recoveryElements.length>400};mappedFetchedAt=new Date().toISOString();}
+      }catch{/* Keep the cached snapshot if recovery cannot refresh. */}
+    }
+    result.mappedCount=mapped.stations.length;result.directoryFetchedAt=mappedFetchedAt;result.searchLimited=mapped.limited;
     const records=user?await database().prepare("SELECT payload,updated FROM saved_items WHERE owner=? AND kind='report' ORDER BY updated DESC LIMIT 200").bind(user.userId).all<{payload:string;updated:number}>():{results:[] as {payload:string;updated:number}[]};
     const reports:Record<string,PersonalReport>={};
     for(const row of records.results){try{const value=JSON.parse(row.payload);if(typeof value.sourceId==='string'&&!reports[value.sourceId]&&['working','busy','broken'].includes(value.status))reports[value.sourceId]={sourceId:value.sourceId,status:value.status,reportedAt:row.updated};}catch{/* Ignore an unreadable old personal report. */}}
-    const shortlist=shortlistStations(directory.data.stations.filter(station=>!input.excludedStationIds?.includes(station.id)),input,baseRoute,reports,Date.now());
-    result.searchLimited ||= directory.data.stations.length>shortlist.length;
+    const shortlist=shortlistStations(mapped.stations.filter(station=>!input.excludedStationIds?.includes(station.id)),input,baseRoute,reports,Date.now());
+    result.searchLimited ||= mapped.stations.length>shortlist.length;
     if(!shortlist.length)return respond();
     const points=[input.origin,...shortlist,input.destination];
     const coordinates=routeCoordinates(points);

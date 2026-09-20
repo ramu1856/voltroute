@@ -86,12 +86,16 @@ export function routeSamples(route: RoadRoute, maxMiles: number, gapMiles = 2): 
 export function corridorQuery(input: SmartStopInput, route: RoadRoute): string {
   const samples=routeSamples(route,reachableMiles(input));
   if(!samples.length)throw new Error('The route geometry could not be used to search for chargers.');
-  const socketTags:Record<string,string[]>={CCS1:['socket:type1_combo'],J1772:['socket:type1'],NACS:['socket:nacs','socket:tesla_supercharger','socket:tesla_destination'],CHAdeMO:['socket:chademo']};
   const latitudePadding=10/69;
   const longitudePadding=10/(69*Math.max(0.1,Math.cos(Math.max(...samples.map(p=>Math.abs(p.lat)))*Math.PI/180)));
   const bounds=[Math.max(-90,Math.min(...samples.map(p=>p.lat))-latitudePadding),Math.max(-180,Math.min(...samples.map(p=>p.lon))-longitudePadding),Math.min(90,Math.max(...samples.map(p=>p.lat))+latitudePadding),Math.min(180,Math.max(...samples.map(p=>p.lon))+longitudePadding)].map(n=>n.toFixed(5)).join(',');
-  const selectors=socketTags[input.profile.connector].map(tag=>`nwr.route_chargers["${tag}"]["${tag}"!~"^(0|no)$"];`).join('');
-  return `[out:json][timeout:12][maxsize:67108864];nwr[amenity=charging_station](${bounds})->.route_chargers;(${selectors});out center meta 401;`;
+  return `[out:json][timeout:12][maxsize:67108864];nwr[amenity=charging_station](${bounds});out center meta 401;`;
+}
+
+function connectorState(station: Station, connector: string) {
+  if (station.connectors.includes(connector)) return 'match' as const;
+  if (!station.connectors.length) return 'unknown' as const;
+  return 'mismatch' as const;
 }
 
 export function shortlistStations(stations: Station[], input: SmartStopInput, route: RoadRoute, reports: Record<string,PersonalReport>, now: number, count = 16): Station[] {
@@ -101,19 +105,22 @@ export function shortlistStations(stations: Station[], input: SmartStopInput, ro
   return stations.filter(station => {
     if (input.excludedStationIds?.includes(station.id)) return false;
     if (seen.has(station.id)) return false; seen.add(station.id);
-    return station.connectors.includes(input.profile.connector) && !['planned','temporarily unavailable'].includes(station.status)
+    return connectorState(station,input.profile.connector)!=='mismatch' && !['planned','temporarily unavailable'].includes(station.status)
       && !['no','private','permit','delivery'].includes(station.access) && miles(input.origin, station) <= reach
       && evaluateAvailability(station, reports[station.id], now).condition !== 'unavailable';
   }).map(station => {
     let nearest:{mile:number;off:number}|null=null;
     for(const p of samples){const off=miles(p,station);if(!nearest||off<nearest.off)nearest={mile:p.mile,off};}
     return {station,off:nearest?.off??Infinity,approx:nearest ? nearest.off*4 + Math.abs(nearest.mile-goal)*0.15 + (connectorKW(station,input.profile.connector) === null ? 10 : 0) : Infinity};
-  }).filter(item=>item.off<=10).sort((a,b)=>a.approx-b.approx || a.station.id.localeCompare(b.station.id)).slice(0,count).map(item=>item.station);
+  // Keep corridor search practical but tolerate stations a bit farther from
+  // the sampled route so sparse regions do not collapse to "no suitable stop".
+  }).filter(item=>item.off<=14).sort((a,b)=>a.approx-b.approx || a.station.id.localeCompare(b.station.id)).slice(0,count).map(item=>item.station);
 }
 
 function evaluateCandidate(candidate: CandidateInput, input: SmartStopInput, base: RoadRoute, report: PersonalReport | undefined, now: number): RankedStop | Exclusion {
   const {station,legs} = candidate;
-  if (!station.connectors.includes(input.profile.connector)) return 'connector';
+  const connectorEvidence=connectorState(station,input.profile.connector);
+  if (connectorEvidence==='mismatch') return 'connector';
   const availability = evaluateAvailability(station,report,now);
   if (['planned','temporarily unavailable'].includes(station.status) || availability.condition === 'unavailable') return 'unavailable';
   if (['no','private','permit','delivery'].includes(station.access)) return 'access';
@@ -143,6 +150,7 @@ function evaluateCandidate(candidate: CandidateInput, input: SmartStopInput, bas
     {label:'Extra driving minutes',points:detourMinutes},
     {label:'Stopping early',points:Math.max(0,battery-input.reserve-10)*0.75},
     {label:'Charging speed',points:speedBasis===null?25:25*(1-Math.min(speedBasis,150)/150)},
+    {label:'Connector certainty',points:connectorEvidence==='unknown'?18:0},
     {label:'Availability uncertainty',points:availability.freshness==='live'&&availability.condition==='available'?0:availability.condition==='working'?5:availability.condition==='busy'?25:15},
     {label:'Opening-hours uncertainty',points:hours.state==='unknown'?10:0},
     {label:'Access uncertainty',points:['yes','permissive'].includes(station.access)?0:10},
@@ -150,7 +158,9 @@ function evaluateCandidate(candidate: CandidateInput, input: SmartStopInput, bas
   const reasons=[
     `${legs.toMiles.toFixed(1)} road miles from your start; estimated arrival battery ${battery.toFixed(1)}%, above your ${input.reserve}% reserve.`,
     `${detourMinutes.toFixed(1)} extra driving minutes (${detourMiles.toFixed(1)} miles), within your ${input.maxDetourMinutes}-minute limit.`,
-    `The listing includes your selected ${input.profile.connector} connector.`,
+    connectorEvidence==='match'
+      ? `The listing includes your selected ${input.profile.connector} connector.`
+      : `Connector tags are incomplete for this station. ${input.profile.connector} compatibility is unconfirmed.`,
     listedKW!==null?`${listedKW} kW is listed for that connector${usableKW!==null?`; capped at ${usableKW} kW for this estimate`:'; your vehicle speed limit is not supplied'}.`:'Power for your connector is not supplied; speed received an uncertainty adjustment.',
     hours.state==='open'?'Listed opening hours cover the estimated arrival time.':'Opening hours at arrival could not be confirmed.',
     `Availability evidence: ${availability.label}.`,
@@ -161,6 +171,7 @@ function evaluateCandidate(candidate: CandidateInput, input: SmartStopInput, bas
     'Arrival battery uses your entered full-battery range. Weather, elevation, traffic and battery condition are not modeled.',
   ];
   if(availability.freshness!=='live'||availability.condition!=='available')warnings.unshift('A working, free port is not confirmed. Check the operator before departure.');
+  if(connectorEvidence==='unknown')warnings.unshift(`Connector compatibility for ${input.profile.connector} is unconfirmed at this station. Verify with the operator before driving.`);
   if(availability.condition==='busy')warnings.unshift('The latest observation says busy. No waiting-time forecast is available.');
   if(!['yes','permissive'].includes(station.access))warnings.push(`Access is ${station.access==='Access not listed'?'not confirmed':`listed as ${station.access}`}. Check entry restrictions.`);
   if(hours.state==='unknown')warnings.push('Check station opening hours for your arrival.');
