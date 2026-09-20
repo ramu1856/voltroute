@@ -9,8 +9,8 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
   workerd: true
-storeDir: ${SITES_PNPM_SHARED_STORE:-.sites-runtime/pnpm-store}
-cacheDir: ${SITES_PNPM_SHARED_STORE:-.sites-runtime/pnpm-store}/policy-cache
+storeDir: .sites-runtime/pnpm-store
+cacheDir: .sites-runtime/pnpm-store/policy-cache
 enableGlobalVirtualStore: false
 # A later project-only session must not mutate a shared-store inode through node_modules.
 packageImportMethod: clone-or-copy
