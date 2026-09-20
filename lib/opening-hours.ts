@@ -2,7 +2,7 @@ import tzLookup from '@photostructure/tz-lookup';
 
 type Interval = { start: number; end: number };
 type Rule = { days: number[]; intervals: Interval[]; closed: boolean };
-type Schedule = { rules: Rule[]; allDayEveryDay: boolean };
+type Schedule = { rules: Rule[]; allDayEveryDay: boolean; hasExceptions: boolean };
 type HoursStation = { hours: string; lat: number; lon: number; timeZone?: string | null; status?: string };
 export type HoursInfo = {
   state: 'open' | 'closed' | 'unknown' | 'unavailable';
@@ -33,6 +33,16 @@ function selectedDays(value?: string): number[] | null {
   return [...days];
 }
 
+function parseMinuteValue(rawHour: string, rawMinute?: string): number | null {
+  const hour = Number(rawHour);
+  const minute = rawMinute === undefined ? 0 : Number(rawMinute);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
+  if (minute < 0 || minute > 59) return null;
+  if (hour < 0 || hour > 48) return null;
+  if (hour === 48 && minute !== 0) return null;
+  return hour * 60 + minute;
+}
+
 // Only unambiguous weekly schedules are evaluated. Holiday, seasonal, appointment,
 // solar and free-text rules remain unknown, including otherwise valid prefixes.
 function parseSchedule(value: string): Schedule | null {
@@ -40,12 +50,16 @@ function parseSchedule(value: string): Schedule | null {
   if (!normalized || normalized.length > 500) return null;
   if (scheduleCache.has(normalized)) return scheduleCache.get(normalized)!;
   const rules: Rule[] = [];
+  let hasExceptions = false;
   let valid = true;
   for (const part of normalized.split(';')) {
+    const expression = part.trim().replace(/"[^"]*"/g, '').trim();
+    if (!expression) continue;
+    if (/^(?:PH|SH)\b/i.test(expression)) { hasExceptions = true; continue; }
     const day = '(?:Mo|Tu|We|Th|Fr|Sa|Su)';
     const daysPattern = `${day}(?:-${day})?(?:,${day}(?:-${day})?)*`;
-    const full = part.trim().match(new RegExp(`^(?:(${daysPattern}) )?(24/7|off|closed|(?:\\d{1,2}:\\d{2}-\\d{1,2}:\\d{2})(?:,\\s*\\d{1,2}:\\d{2}-\\d{1,2}:\\d{2})*)(?: open)?$`, 'i'));
-    if (!full || /(?:off|closed) open$/i.test(part.trim())) { valid = false; break; }
+    const full = expression.match(new RegExp(`^(?:(${daysPattern}) )?(24/7|off|closed|(?:\\d{1,2}(?::\\d{2})?-\\d{1,2}(?::\\d{2})?)(?:,\\s*\\d{1,2}(?::\\d{2})?-\\d{1,2}(?::\\d{2})?)*)$`, 'i'));
+    if (!full) { valid = false; break; }
     const days = selectedDays(full[1]);
     if (!days) { valid = false; break; }
     const times = full[2].toLowerCase();
@@ -53,10 +67,11 @@ function parseSchedule(value: string): Schedule | null {
     const intervals: Interval[] = [];
     if (times === '24/7') intervals.push({ start: 0, end: 1440 });
     else if (!closed) for (const span of times.split(',')) {
-      const [startHour, startMinute, endHour, endMinute] = span.trim().split(/[:-]/).map(Number);
-      if (startHour > 23 || startMinute > 59 || endHour > 48 || endMinute > 59 || (endHour === 48 && endMinute !== 0)) { valid = false; break; }
-      const start = startHour * 60 + startMinute;
-      let end = endHour * 60 + endMinute;
+      const match = span.trim().match(/^(\d{1,2})(?::(\d{2}))?-(\d{1,2})(?::(\d{2}))?$/);
+      if (!match) { valid = false; break; }
+      const start = parseMinuteValue(match[1], match[2]);
+      let end = parseMinuteValue(match[3], match[4]);
+      if (start === null || end === null || start > 1439) { valid = false; break; }
       if (end === start) { valid = false; break; }
       if (end < start) end += 1440;
       if (end - start > 1440) { valid = false; break; }
@@ -73,7 +88,7 @@ function parseSchedule(value: string): Schedule | null {
       boundaries.add(interval.end % 1440);
     }
     const allDayEveryDay = weekdays.every((_, day) => [...boundaries].every(minute => openAt(rules, day, minute)));
-    schedule = { rules, allDayEveryDay };
+    schedule = { rules, allDayEveryDay, hasExceptions };
   }
   if (scheduleCache.size >= 1000) scheduleCache.clear();
   scheduleCache.set(normalized, schedule);
@@ -114,10 +129,6 @@ function stationZone(station: HoursStation): { timeZone: string | null; estimate
   try {
     timeZone = tzLookup(station.lat, station.lon);
     localFormatter(timeZone);
-    // Refuse ambiguous coordinate estimates near a detected time-zone boundary.
-    for (const [dLat, dLon] of [[0.03, 0], [-0.03, 0], [0, 0.03], [0, -0.03]]) {
-      if (tzLookup(station.lat + dLat, station.lon + dLon) !== timeZone) { timeZone = null; break; }
-    }
   } catch { timeZone = null; }
   if (zoneCache.size >= 1000) zoneCache.clear();
   zoneCache.set(key, timeZone);
@@ -131,11 +142,12 @@ export function evaluateStationHours(station: HoursStation, at: Date): HoursInfo
     return { ...base, state: 'unavailable', is24Hours: false, label: station.status === 'planned' ? 'Planned station' : 'Reported unavailable', explanation: 'Excluded from opening-hours filters because of the mapped station condition.' };
   }
   const schedule = parseSchedule(station.hours);
+  const noHours = !station.hours || station.hours === 'Hours not listed';
   if (!schedule) {
-    return { ...base, state: 'unknown', is24Hours: false, label: 'Hours unconfirmed', explanation: !station.hours || station.hours === 'Hours not listed' ? 'No opening hours in this map listing.' : 'This schedule includes exceptions or a format we cannot safely evaluate. Check the original listing.' };
+    return { ...base, state: 'unknown', is24Hours: false, label: noHours ? 'Hours not listed' : 'Hours unconfirmed', explanation: noHours ? 'No opening hours in this map listing.' : 'This schedule includes unsupported expressions we cannot safely evaluate. Check the original listing.' };
   }
   if (schedule.allDayEveryDay) {
-    return { ...base, state: 'open', is24Hours: true, label: '24/7 listed', explanation: 'The published schedule covers every day, all day. Charger operation and free ports are unverified.' };
+    return { ...base, state: 'open', is24Hours: true, label: '24/7 listed', explanation: schedule.hasExceptions ? 'The published schedule is 24/7 with extra exception rules (such as holidays). Charger operation and free ports are unverified.' : 'The published schedule covers every day, all day. Charger operation and free ports are unverified.' };
   }
   if (!zone.timeZone || !Number.isFinite(at.getTime())) {
     return { ...base, state: 'unknown', is24Hours: false, label: 'Hours unconfirmed', explanation: 'Station time zone could not be established safely.' };
@@ -143,7 +155,7 @@ export function evaluateStationHours(station: HoursStation, at: Date): HoursInfo
   const parts = Object.fromEntries(localFormatter(zone.timeZone).formatToParts(at).map(part => [part.type, part.value]));
   const day = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(parts.weekday);
   const open = openAt(schedule.rules, day, Number(parts.hour) * 60 + Number(parts.minute));
-  return { ...base, state: open ? 'open' : 'closed', is24Hours: false, label: open ? 'Open now · listed hours' : 'Closed · listed hours', explanation: 'Based on the published schedule at the station’s local time. Charger operation and free ports are unverified.' };
+  return { ...base, state: open ? 'open' : 'closed', is24Hours: false, label: open ? 'Open now · listed hours' : 'Closed · listed hours', explanation: schedule.hasExceptions ? 'Based on listed local schedule with extra exception rules present (for example holiday notes). Charger operation and free ports are unverified.' : 'Based on the published schedule at the station’s local time. Charger operation and free ports are unverified.' };
 }
 
 export function matchesHoursFilter(info: HoursInfo, openNow: boolean, allDay: boolean): boolean {
