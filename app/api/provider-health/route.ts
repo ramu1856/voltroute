@@ -1,7 +1,8 @@
 import { env } from 'cloudflare:workers';
 import { overpassEndpoints } from '@/lib/overpass';
 import { type ProviderCheck, summarizeProviderHealth } from '@/lib/provider-health';
-import { WORKER_SITE_URL } from '@/lib/site-config';
+import { ServiceError } from '@/lib/service-error';
+import { fetchTomTomWithRefererFallback } from '@/lib/tomtom-fetch';
 
 async function probeJson(endpoint: string, init?: RequestInit, timeoutMs = 9000) {
   const started = Date.now();
@@ -75,14 +76,30 @@ export async function GET() {
   checks.push(statusFromResponse('osrm', 'Road routing (OSRM)', osrm.href, osrmProbe.response, osrmProbe.latencyMs));
 
   const query = '[out:json][timeout:8];node(41.87810,-87.62980,41.87825,-87.62965);out ids 1;';
+  const overpassEndpointChecks: ProviderCheck[] = [];
   for (const endpoint of overpassEndpoints(settings)) {
     const probe = await probeJson(endpoint, {
       method: 'POST',
       body: new URLSearchParams({ data: query }),
     });
-    checks.push(statusFromResponse(`overpass:${new URL(endpoint).hostname}`, `Charger directory (${new URL(endpoint).hostname})`, endpoint, probe.response, probe.latencyMs));
+    overpassEndpointChecks.push(statusFromResponse(`overpass:${new URL(endpoint).hostname}`, `Charger directory (${new URL(endpoint).hostname})`, endpoint, probe.response, probe.latencyMs));
   }
+  const overpassUp = overpassEndpointChecks.filter(check => check.state === 'up').length;
+  const overpassDegraded = overpassEndpointChecks.filter(check => check.state === 'degraded').length;
+  const overpassState = overpassUp > 0 ? 'up' : overpassDegraded > 0 ? 'degraded' : 'down';
+  const overpassLatency = overpassEndpointChecks.filter(check => check.latencyMs !== null).map(check => check.latencyMs || 0);
+  const overpassAverageLatency = overpassLatency.length ? Math.round(overpassLatency.reduce((sum, value) => sum + value, 0) / overpassLatency.length) : null;
+  checks.push({
+    key: 'overpass-pool',
+    label: 'Charger directory (Overpass pool)',
+    endpoint: 'https://overpass-api.de/api/interpreter',
+    state: overpassState,
+    latencyMs: overpassAverageLatency,
+    detail: `${overpassUp}/${overpassEndpointChecks.length} directory endpoints are operational. Individual endpoint issues are handled by failover.`,
+  });
+
   const tomtomKey = settings.TOMTOM_API_KEY?.trim();
+  const tomtomEndpoint = 'https://api.tomtom.com/search/2/nearbySearch/.json';
   if (tomtomKey) {
     const tomtom = new URL('/search/2/nearbySearch/.json', 'https://api.tomtom.com');
     tomtom.search = new URLSearchParams({
@@ -93,13 +110,52 @@ export async function GET() {
       limit: '1',
       categorySet: '7309',
     }).toString();
-    const tomtomProbe = await probeJson(tomtom.href, { headers: { Referer: settings.TOMTOM_REFERER?.trim() || WORKER_SITE_URL } });
-    checks.push(statusFromResponse('tomtom', 'Live availability (TomTom)', tomtom.href, tomtomProbe.response, tomtomProbe.latencyMs));
+    const startedAt = Date.now();
+    try {
+      const probe = await fetchTomTomWithRefererFallback(tomtom.href, settings);
+      checks.push({
+        key: 'tomtom',
+        label: 'Live availability (TomTom)',
+        endpoint: tomtomEndpoint,
+        state: 'up',
+        latencyMs: Date.now() - startedAt,
+        detail: `Provider responded successfully (Referer accepted: ${new URL(probe.referer).hostname}).`,
+      });
+    } catch (error) {
+      if (error instanceof ServiceError && error.status === 401) {
+        checks.push({
+          key: 'tomtom',
+          label: 'Live availability (TomTom)',
+          endpoint: tomtomEndpoint,
+          state: 'degraded',
+          latencyMs: Date.now() - startedAt,
+          detail: 'TomTom key or allowed referrer rejected the request. Update TOMTOM_API_KEY or TOMTOM_REFERER settings.',
+        });
+      } else if (error instanceof ServiceError && error.status === 429) {
+        checks.push({
+          key: 'tomtom',
+          label: 'Live availability (TomTom)',
+          endpoint: tomtomEndpoint,
+          state: 'degraded',
+          latencyMs: Date.now() - startedAt,
+          detail: 'TomTom provider is rate-limited right now. Retry shortly.',
+        });
+      } else {
+        checks.push({
+          key: 'tomtom',
+          label: 'Live availability (TomTom)',
+          endpoint: tomtomEndpoint,
+          state: 'down',
+          latencyMs: Date.now() - startedAt,
+          detail: 'TomTom provider did not respond.',
+        });
+      }
+    }
   } else {
     checks.push({
       key: 'tomtom',
       label: 'Live availability (TomTom)',
-      endpoint: 'https://api.tomtom.com/search/2/nearbySearch/.json',
+      endpoint: tomtomEndpoint,
       state: 'degraded',
       latencyMs: null,
       detail: 'TOMTOM_API_KEY is not configured.',

@@ -12,7 +12,7 @@ import { preferStops, preferenceReason } from '@/lib/route-preferences';
 import { stopBudget } from '@/lib/trip-budget';
 import { buildMultiStopItinerary } from '@/lib/multi-stop-itinerary';
 import { normalizeTomTomDirectoryResults } from '@/lib/tomtom-directory';
-import { WORKER_SITE_URL } from '@/lib/site-config';
+import { fetchTomTomWithRefererFallback } from '@/lib/tomtom-fetch';
 
 async function key(prefix:string,value:string){const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return `${prefix}:${Array.from(new Uint8Array(hash),v=>v.toString(16).padStart(2,'0')).join('')}`;}
 async function providerCache<T>(cacheKey:string,provider:string,loader:()=>Promise<T>){
@@ -49,7 +49,6 @@ export async function POST(request:Request){
     async function tomtomFallbackStations(route: RoadRoute) {
       const apiKey=settings.TOMTOM_API_KEY?.trim();
       if(!apiKey)return [] as Station[];
-      const referer=settings.TOMTOM_REFERER?.trim() || WORKER_SITE_URL;
       const samples=[
         input.origin,
         ...chargingCheckpoints(route,input.profile,input.battery).slice(0,2).map(point=>({lat:point.lat,lon:point.lon,label:'Route checkpoint'})),
@@ -69,7 +68,8 @@ export async function POST(request:Request){
               limit:'100',
               categorySet:'7309',
             }).toString();
-            return fetchJson(url.href,{headers:{Referer:referer}}) as Promise<{results?:unknown[]}>;
+            const response = await fetchTomTomWithRefererFallback<{results?:unknown[]}>(url.href, settings);
+            return response.data;
           });
           collected.push(...normalizeTomTomDirectoryResults((nearby.data.results || []) as unknown[], input.origin));
           if(collected.length>=300)break;
