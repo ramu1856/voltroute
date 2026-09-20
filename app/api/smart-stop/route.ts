@@ -55,7 +55,7 @@ export async function POST(request:Request){
         ...chargingCheckpoints(route,input.profile,input.battery).slice(0,2).map(point=>({lat:point.lat,lon:point.lon,label:'Route checkpoint'})),
         input.destination,
       ];
-      const deduped=[...new Map(samples.map(sample=>[`$${sample.lat.toFixed(3)}:${sample.lon.toFixed(3)}`,sample])).values()];
+      const deduped=[...new Map(samples.map(sample=>[`${sample.lat.toFixed(3)}:${sample.lon.toFixed(3)}`,sample])).values()];
       const collected: Station[]=[];
       for(const sample of deduped){
         try{
@@ -77,14 +77,21 @@ export async function POST(request:Request){
       }
       return [...new Map(collected.map(station=>[station.id,station])).values()].slice(0,400);
     }
-    const directory=await providerCache(await key('smart-corridor:v1',query),'overpass',async()=>{
-      const elements=await fetchOverpass(query,{endpoints:overpassEndpoints(settings)});
-      return {stations:elements.slice(0,400).map(e=>normalizeStation(e,input.origin)).filter((station):station is Station=>station!==null),limited:elements.length>400};
-    });
-    let mapped=directory.data;
-    let mappedFetchedAt=directory.fetchedAt;
+    let mapped:{stations:Station[];limited:boolean}={stations:[],limited:false};
+    let mappedFetchedAt:string|null=null;
     let usedTomTomFallback=false;
-    if(!mapped.stations.length){
+    let directoryError:unknown=null;
+    try{
+      const directory=await providerCache(await key('smart-corridor:v1',query),'overpass',async()=>{
+        const elements=await fetchOverpass(query,{endpoints:overpassEndpoints(settings)});
+        return {stations:elements.slice(0,400).map(e=>normalizeStation(e,input.origin)).filter((station):station is Station=>station!==null),limited:elements.length>400};
+      });
+      mapped=directory.data;
+      mappedFetchedAt=directory.fetchedAt;
+    }catch(error){
+      directoryError=error;
+    }
+    if(!mapped.stations.length && !directoryError){
       try{
         // Cached empty station lists can occur during short provider outages.
         // Retry once directly so a stale empty cache does not block planning.
@@ -102,6 +109,12 @@ export async function POST(request:Request){
       }
     }
     result.mappedCount=mapped.stations.length;result.directoryFetchedAt=mappedFetchedAt;result.searchLimited=mapped.limited;
+    if(!mapped.stations.length&&directoryError instanceof ServiceError&&(directoryError.status===429||directoryError.status>=500)){
+      result.message='Charging directory providers are temporarily unavailable for this corridor. No recommendation was made. Please retry shortly.';
+      result.comparisonNote='Resilience mode: community directory queries failed and TomTom fallback did not return a usable charger shortlist.';
+      return respond();
+    }
+    if(!mapped.stations.length&&directoryError)throw directoryError;
     const records=user?await database().prepare("SELECT payload,updated FROM saved_items WHERE owner=? AND kind='report' ORDER BY updated DESC LIMIT 200").bind(user.userId).all<{payload:string;updated:number}>():{results:[] as {payload:string;updated:number}[]};
     const reports:Record<string,PersonalReport>={};
     for(const row of records.results){try{const value=JSON.parse(row.payload);if(typeof value.sourceId==='string'&&!reports[value.sourceId]&&['working','busy','broken'].includes(value.status))reports[value.sourceId]={sourceId:value.sourceId,status:value.status,reportedAt:row.updated};}catch{/* Ignore an unreadable old personal report. */}}

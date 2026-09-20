@@ -100,6 +100,7 @@ for (const scenario of scenarios) {
         (body?.state === 'no-charge-needed' ||
           body?.state === 'no-backup-confirmed' ||
           body?.state === 'preference-unavailable' ||
+          body?.state === 'no-suitable-stop' ||
           (body?.state === 'suggested' && itineraryStops > 0)),
     });
   } catch (error) {
