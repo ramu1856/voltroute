@@ -8,6 +8,16 @@ const hostedAuthCallback='https://site-creator-vinext-starter.voltroutes.workers
 function oauthRedirectTarget() {
   return hostedAuthCallback;
 }
+function googleAuthorizeUrl(supabaseUrl:string){
+  const base=supabaseUrl.replace(/\/+$/,'');
+  const url=new URL('/auth/v1/authorize',base);
+  url.searchParams.set('provider','google');
+  url.searchParams.set('redirect_to',oauthRedirectTarget());
+  url.searchParams.set('scopes','openid email profile');
+  url.searchParams.set('prompt','consent select_account');
+  url.searchParams.set('access_type','offline');
+  return url.toString();
+}
 function normalizeUsPhone(value:string){
   const digits=value.replace(/\D/g,'');
   if(digits.length===10)return `+1${digits}`;
@@ -25,6 +35,7 @@ export function AccountAuth({open,onClose,supabaseUrl,supabaseKey}:{open:boolean
   const usPhone=useMemo(()=>normalizeUsPhone(phone),[phone]);
   const phoneInputValid=usPhone!==null;
   const canUseAuthConfig=open&&!!supabaseUrl&&!!supabaseKey;
+  const isLocalOrigin=typeof window!=='undefined'&&/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(window.location.origin);
   useEffect(()=>{
     let cancelled=false;
     if(!canUseAuthConfig)return;
@@ -46,17 +57,8 @@ export function AccountAuth({open,onClose,supabaseUrl,supabaseKey}:{open:boolean
   async function startGoogleSignIn(){
     setBusy(true);setError('');setMessage('');
     try{
-      const {data,error:authError}=await supabaseBrowser({url:supabaseUrl,key:supabaseKey}).auth.signInWithOAuth({
-        provider:'google',
-        options:{
-          redirectTo:oauthRedirectTarget(),
-          scopes:'openid email profile',
-          queryParams:{prompt:'consent select_account',access_type:'offline'},
-        },
-      });
-      if(authError)throw authError;
-      if(data?.url)window.location.assign(data.url);
-      else setMessage('Opening Google sign-in...');
+      if(isLocalOrigin)setMessage('Localhost testing detected. Production users should sign in from voltroutes.com or workers.dev.');
+      window.location.assign(googleAuthorizeUrl(supabaseUrl));
     }catch(reason){
       const text=reason instanceof Error?reason.message:'Could not start Google sign-in.';
       if(text.toLowerCase().includes('provider'))setError('Google sign-in is not enabled yet. Enable Google provider and try again.');
@@ -87,6 +89,7 @@ export function AccountAuth({open,onClose,supabaseUrl,supabaseKey}:{open:boolean
       </Button>
       {!canUseAuthConfig&&<p className="auth-muted" role="status">Google sign-in is unavailable because auth keys are missing for this environment.</p>}
       {canUseAuthConfig&&googleEnabled===false&&<p className="auth-muted" role="status">Google sign-in setup is incomplete. Enable Google provider to continue.</p>}
+      {canUseAuthConfig&&isLocalOrigin&&<p className="auth-muted" role="status">You are on localhost. If your local dev server is stopped, browser return-to-localhost will fail. Use the live URL for production sign-in tests.</p>}
       <div className="auth-alt-block">
         <p>Optional backup: US phone number OTP (+1).</p>
         <label className="form-label">US phone number<input type="tel" autoComplete="tel" value={phone} onChange={event=>setPhone(event.target.value)} placeholder="(555) 123-4567"/></label>
