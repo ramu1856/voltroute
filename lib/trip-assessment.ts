@@ -82,8 +82,12 @@ export function assessTrip(result:SmartStopResult,now:number):TripAssessment{
   const backupArrival=backup?input.battery-(main!.legs.toMiles+backup.connection.miles)/input.profile.range*100-input.failureAllowance:null;
   const backupRoad=backup?.route&&measureRoad(backup.route)&&Math.abs(backup.route.miles-backup.connection.miles)<=.1?backup.route:null;
   const backed=!!backup&&!!backupRoad&&backup.qualifiesForMode&&backupArrival!==null&&backupArrival+1e-8>=input.reserve;
-  const coveredMiles=noCharge||oneStopComplete?road.miles:hasStop&&mainArrival+1e-8>=input.reserve?clamp(main!.legs.toMiles,0,road.miles):0;
-  const unassessedMiles=Math.max(0,road.miles-coveredMiles),coverage=coveredMiles/road.miles;
+  let coveredMiles=noCharge||oneStopComplete?road.miles:hasStop&&mainArrival+1e-8>=input.reserve?clamp(main!.legs.toMiles,0,road.miles):0;
+  let unassessedMiles=Math.max(0,road.miles-coveredMiles);
+  const itineraryChain=result.itinerary;
+  if(itineraryChain?.status==='complete'){coveredMiles=road.miles;unassessedMiles=0;}
+  else if(itineraryChain?.status==='partial'){coveredMiles=Math.max(coveredMiles,Math.min(road.miles,itineraryChain.totalDriveMiles));unassessedMiles=Math.max(0,road.miles-coveredMiles);}
+  const coverage=coveredMiles/road.miles;
   const currentMain=hasStop?evaluateAvailability(main!.station,main!.personalReport||undefined,now):null;
   const currentBackup=backup?evaluateAvailability(backup.station,backup.personalReport||undefined,now):null;
   const mainHours=hasStop?evaluateStationHours(main!.station,new Date(now+main!.legs.toMinutes*60_000)):null;
@@ -96,7 +100,7 @@ export function assessTrip(result:SmartStopResult,now:number):TripAssessment{
   const accessCredit=(mainAccess?2.5:0)+(mainOpen?2.5:0)+(backupAccess?2.5:0)+(backupOpen?2.5:0);
   const differentNetwork=backed&&networkKnown(main!.station)&&networkKnown(backup!.station)&&!backup!.sameNetwork;
   const factors:ConfidenceFactor[]=[
-    {key:'coverage',label:'Charging plan coverage',earned:40*coverage,possible:40,applicable:true,reason:noCharge?'The entered range covers the complete road route without charging.':oneStopComplete?`One planned charge to ${main!.targetBattery.toFixed(1)}% supports the road to the destination with ${energyPlan!.destination.toFixed(1)}% remaining. Successful charging is an explicit assumption.`:hasStop?`${coveredMiles.toFixed(1)} of ${road.miles.toFixed(1)} road miles assessed to the next stop. Later charging is not planned.`:'No charging stop has been confirmed for the route.'},
+    {key:'coverage',label:'Charging plan coverage',earned:40*coverage,possible:40,applicable:true,reason:noCharge?'The entered range covers the complete road route without charging.':itineraryChain?.status==='complete'?`A charger-by-charger itinerary currently covers the full ${road.miles.toFixed(1)} road miles.`:oneStopComplete?`One planned charge to ${main!.targetBattery.toFixed(1)}% supports the road to the destination with ${energyPlan!.destination.toFixed(1)}% remaining. Successful charging is an explicit assumption.`:hasStop?`${coveredMiles.toFixed(1)} of ${road.miles.toFixed(1)} road miles assessed to the next stop. Later charging is not planned.`:'No charging stop has been confirmed for the route.'},
     {key:'battery',label:'Battery above your reserve',earned:batteryCredit,possible:25,applicable:true,reason:Number.isFinite(margin)?`${Math.max(0,margin).toFixed(1)} percentage points above your ${input.reserve}% reserve at the weakest checked arrival${margin<0?'; the reserve is not met':''}. 5 points for meeting reserve, plus up to 20 for a 10-point buffer.`:'No supported charging arrival to assess.'},
     {key:'evidence',label:'Current charger observations',earned:15*dataCredit,possible:15,applicable:!noCharge,reason:noCharge?'No charging stop is required under your range assumption.':`Main: ${currentMain?.label||'not selected'}. Backup: ${currentBackup?.label||'not confirmed'}. Use the weaker observation: live available earns 100%, recent available or working 40%, otherwise 0%. Without a backup, halve the main's credit. Arrival availability is not forecast.`},
     {key:'access',label:'Arrival hours and public access',earned:accessCredit,possible:10,applicable:!noCharge,reason:noCharge?'No charging access is needed.':'2.5 points each for listed public access and hours covering arrival at the main and backup stops. Missing information earns no points.'},
@@ -105,12 +109,13 @@ export function assessTrip(result:SmartStopResult,now:number):TripAssessment{
   const applicable=factors.filter(f=>f.applicable);
   const rawScore=Math.round(applicable.reduce((sum,f)=>sum+f.earned,0)/applicable.reduce((sum,f)=>sum+f.possible,0)*100);
   const limits=[{maximum:85,reason:'Maximum 85: range is entered manually; weather, elevation, traffic and future port availability are not modeled.'}];
-  if(unassessedMiles>.01)limits.push({maximum:59,reason:'Maximum 59: the complete charging itinerary has not been assessed.'});
+  if(unassessedMiles>.01&&itineraryChain?.status!=='complete')limits.push({maximum:59,reason:'Maximum 59: the complete charging itinerary has not been assessed.'});
   if(!noCharge&&!hasStop)limits.push({maximum:24,reason:'Maximum 24: charging is needed but no main stop is recommended.'});
   if(hasStop&&(!backed||margin<0))limits.push({maximum:39,reason:'Maximum 39: a qualifying backup or the arrival reserve is missing.'});
   const score=clamp(Math.min(rawScore,...limits.map(rule=>rule.maximum)),0,100);
   const issues:string[]=[];
   if(oneStopComplete)issues.push(`The final leg assumes successful charging to ${main!.targetBattery.toFixed(1)}% at the main stop. A failed charge still uses the separate backup scenario.`);
+  if(itineraryChain?.status==='complete')issues.push(`A ${itineraryChain.stops.length}-stop itinerary is available, but each stop still assumes successful charging and stable access on arrival.`);
   if(hasStop&&unassessedMiles>.01)issues.push(`${unassessedMiles.toFixed(1)} miles after the next stop are not assessed. No further charging or battery gain is assumed on the map.`);
   if(!noCharge&&!hasStop)issues.push('Charging is required, but no stop passed the current planning requirements. Red sections show a reserve shortfall in this plan, not proof that chargers do not exist.');
   if(currentMain&&(currentMain.freshness!=='live'||currentMain.condition!=='available'))issues.push('A working, free port at the main stop is unconfirmed.');
@@ -157,7 +162,27 @@ export function assessTrip(result:SmartStopResult,now:number):TripAssessment{
     legs: [],
     notes: ['A projected full itinerary needs a valid next charging stop and battery model.'],
   };
-  if(noCharge||oneStopComplete){
+  if(itineraryChain?.status==='complete'||itineraryChain?.status==='partial'){
+    itinerary={
+      status:itineraryChain.status==='complete'?'projected':'incomplete',
+      score:itineraryChain.projectedScore,
+      label:itineraryChain.status==='complete'?'Checked multi-stop itinerary':'Partial checked itinerary',
+      projectedStops:itineraryChain.stops.length,
+      projectedCoveredMiles:Math.min(road.miles,itineraryChain.totalDriveMiles),
+      remainingMiles:itineraryChain.remainingMiles,
+      legs:itineraryChain.stops.map((stop,index)=>({
+        id:`itinerary-${index}`,
+        fromMile:index===0?0:itineraryChain.stops.slice(0,index).reduce((sum,item)=>sum+item.legMiles,0),
+        toMile:itineraryChain.stops.slice(0,index+1).reduce((sum,item)=>sum+item.legMiles,0),
+        distanceMiles:stop.legMiles,
+        batteryFrom:stop.arrivalBattery+(stop.legMiles/input.profile.range*100),
+        batteryTo:stop.arrivalBattery,
+        requiresChargeStop:true,
+        assumption:stop.assumptions.join(' '),
+      })),
+      notes:itineraryChain.notes,
+    };
+  } else if(noCharge||oneStopComplete){
     itinerary = {
       status: 'not-needed',
       score,
