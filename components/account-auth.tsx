@@ -4,9 +4,15 @@ import { Phone, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabaseBrowser } from '@/lib/supabase-client';
 
-const hostedAuthCallback='https://voltroutes.com/';
+const productionAuthCallback='https://voltroutes.com/callback';
+const workerAuthCallback='https://site-creator-vinext-starter.voltroutes.workers.dev/callback';
 function oauthRedirectTarget() {
-  return hostedAuthCallback;
+  if(typeof window==='undefined')return productionAuthCallback;
+  const origin=window.location.origin.toLowerCase();
+  if(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin))return productionAuthCallback;
+  if(origin==='https://site-creator-vinext-starter.voltroutes.workers.dev')return workerAuthCallback;
+  if(origin==='https://voltroutes.com'||origin==='https://www.voltroutes.com')return productionAuthCallback;
+  return productionAuthCallback;
 }
 function googleAuthorizeUrl(supabaseUrl:string){
   const base=supabaseUrl.replace(/\/+$/,'');

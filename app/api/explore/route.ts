@@ -1,10 +1,108 @@
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 import { cached, cachedDirectory, failure, fetchJson, ServiceError } from '@/lib/server-data';
-import { normalizeAmenities, normalizeStation, type Point } from '@/lib/ev';
+import { miles, normalizeAmenities, normalizeStation, type Point, type Station } from '@/lib/ev';
 import { chooseTomTomAvailabilitySource, TOMTOM_CONNECTOR, tomTomOperatorObservation } from '@/lib/tomtom-live';
 import { fetchOverpass, overpassEndpoints } from '@/lib/overpass';
 const coords=z.object({lat:z.coerce.number().min(-90).max(90),lon:z.coerce.number().min(-180).max(180)});
+const tomTomHeaders = { Referer: 'https://voltroutes.com/' };
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+function asNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+function asString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+function connectorFromTomTom(value: string): Station['connectors'][number] | null {
+  const normalized = value.toLowerCase();
+  if (normalized.includes('tesla')) return 'NACS';
+  if (normalized.includes('ccs') || normalized.includes('type1ccs')) return 'CCS1';
+  if (normalized.includes('chademo')) return 'CHAdeMO';
+  if (normalized.includes('type1') || normalized.includes('j1772')) return 'J1772';
+  return null;
+}
+function normalizeTomTomDirectoryResults(results: unknown[], origin: Point): Station[] {
+  const stations: Station[] = [];
+  for (const item of results) {
+    const source = asRecord(item);
+    const position = asRecord(source?.position);
+    const lat = asNumber(position?.lat);
+    const lon = asNumber(position?.lon);
+    if (lat === null || lon === null) continue;
+    const poi = asRecord(source?.poi);
+    const addressRecord = asRecord(source?.address);
+    const chargingPark = asRecord(source?.chargingPark);
+    const connectors = new Set<Station['connectors'][number]>();
+    let maxPower: number | null = null;
+    const connectorPower: Record<string, number | null> = {};
+    for (const connector of Array.isArray(chargingPark?.connectors) ? chargingPark.connectors : []) {
+      const connectorRecord = asRecord(connector);
+      const rawType = asString(connectorRecord?.standardConnectorType) || asString(connectorRecord?.type) || asString(connectorRecord?.connectorType);
+      if (!rawType) continue;
+      const mapped = connectorFromTomTom(rawType);
+      if (!mapped) continue;
+      connectors.add(mapped);
+      const connectorPowerKw = asNumber(connectorRecord?.maxPowerKW) ?? asNumber(connectorRecord?.powerKW);
+      if (connectorPowerKw !== null && connectorPowerKw > 0) {
+        connectorPower[mapped] = Math.max(connectorPower[mapped] || 0, connectorPowerKw);
+        maxPower = maxPower === null ? connectorPowerKw : Math.max(maxPower, connectorPowerKw);
+      } else if (!(mapped in connectorPower)) {
+        connectorPower[mapped] = null;
+      }
+    }
+    const id = asString(source?.id) || `${lat.toFixed(5)},${lon.toFixed(5)}`;
+    const freeformAddress = asString(addressRecord?.freeformAddress);
+    const address = freeformAddress || [asString(addressRecord?.streetNumber), asString(addressRecord?.streetName), asString(addressRecord?.municipality)].filter(Boolean).join(' ');
+    const network = asString(poi?.name) || asString(poi?.brand) || 'TomTom listing';
+    stations.push({
+      id: `tomtom/${id}`,
+      name: asString(poi?.name) || 'EV charging station',
+      lat,
+      lon,
+      network,
+      connectors: [...connectors],
+      power: maxPower,
+      connectorPower: Object.keys(connectorPower).length ? connectorPower : undefined,
+      ports: null,
+      fee: 'Price not listed',
+      hours: 'Hours not listed',
+      access: 'Access not listed',
+      address,
+      sourceUrl: 'https://www.tomtom.com/',
+      updated: null,
+      distance: miles(origin, { lat, lon }),
+      toilets: 'unknown',
+      website: null,
+      status: 'unknown',
+      timeZone: null,
+      operatorObservation: null,
+      operatorTariff: null,
+    });
+  }
+  return [...new Map(stations.map(station => [station.id, station])).values()].sort((a, b) => a.distance - b.distance).slice(0, 250);
+}
+async function fetchTomTomStations(point: Point, radius: number, settings: Record<string, string | undefined>) {
+  const apiKey = settings.TOMTOM_API_KEY?.trim();
+  if (!apiKey) return [] as Station[];
+  const searchRadius = Math.min(50000, Math.max(25000, Math.round(radius)));
+  const nearby = await cached(`tomtom-explore:v2:${point.lat.toFixed(4)}:${point.lon.toFixed(4)}:${searchRadius}`, 'tomtom', 300, async () => {
+    const url = new URL('/search/2/nearbySearch/.json', 'https://api.tomtom.com');
+    url.search = new URLSearchParams({
+      key: apiKey,
+      lat: String(point.lat),
+      lon: String(point.lon),
+      radius: String(searchRadius),
+      limit: '100',
+      categorySet: '7309',
+    }).toString();
+    return fetchJson(url.href, { headers: tomTomHeaders }) as Promise<{ results?: unknown[] }>;
+  });
+  return normalizeTomTomDirectoryResults((nearby.data.results || []) as unknown[], point);
+}
+
 export async function GET(request:Request) {
  try {
   const q=new URL(request.url).searchParams;const action=q.get('action');
@@ -29,12 +127,12 @@ export async function GET(request:Request) {
     try{
       const nearbyUrl=new URL('/search/2/nearbySearch/.json','https://api.tomtom.com');
       nearbyUrl.search=new URLSearchParams({key:apiKey,lat:String(point.lat),lon:String(point.lon),radius:'650',limit:'12',connectorSet:tomtomConnector}).toString();
-      const nearby=await cached(`tomtom-nearby:v1:${point.lat.toFixed(4)}:${point.lon.toFixed(4)}:${tomtomConnector}`,'tomtom-nearby',120,async()=>fetchJson(nearbyUrl.href) as Promise<{results:unknown[]}>);
+      const nearby=await cached(`tomtom-nearby:v1:${point.lat.toFixed(4)}:${point.lon.toFixed(4)}:${tomtomConnector}`,'tomtom-nearby',120,async()=>fetchJson(nearbyUrl.href,{headers:tomTomHeaders}) as Promise<{results:unknown[]}>);
       const source=chooseTomTomAvailabilitySource((nearby.data.results||[]) as Parameters<typeof chooseTomTomAvailabilitySource>[0],{...point,name,network});
       if(!source)return Response.json({data:null,notice:'No matching TomTom live-availability station was confirmed near this map listing.'},{headers:{'Cache-Control':'private, no-store'}});
       const availabilityUrl=new URL('/search/2/chargingAvailability.json','https://api.tomtom.com');
       availabilityUrl.search=new URLSearchParams({key:apiKey,chargingAvailability:source.id,connectorSet:tomtomConnector}).toString();
-      const availability=await cached(`tomtom-live:v1:${source.id}:${tomtomConnector}`,'tomtom-live',60,async()=>fetchJson(availabilityUrl.href));
+      const availability=await cached(`tomtom-live:v1:${source.id}:${tomtomConnector}`,'tomtom-live',60,async()=>fetchJson(availabilityUrl.href,{headers:tomTomHeaders}));
       const observation=tomTomOperatorObservation(stationId,availability.data as Parameters<typeof tomTomOperatorObservation>[1],availability.fetchedAt);
       return Response.json({data:observation,matched:{name:source.name,distanceMiles:source.distanceMiles},fetchedAt:availability.fetchedAt,notice:observation?null:'TomTom matched the station, but current connector availability was not usable.'},{headers:{'Cache-Control':'private, no-store'}});
     }catch(error){
@@ -48,14 +146,34 @@ export async function GET(request:Request) {
     const lat=Number(point.lat.toFixed(4)),lon=Number(point.lon.toFixed(4));
     const area=`(around:${radius},${lat},${lon})`;
     const query=action==='stations'?`[out:json][timeout:12][maxsize:67108864];nwr[amenity=charging_station]${area};out center tags 300 qt;`:`[out:json][timeout:10];(nwr[amenity~"^(restaurant|cafe|fast_food|food_court|toilets)$"]${area};nwr[toilets=yes]${area};nwr[shop~"^(supermarket|convenience|mall|department_store)$"]${area};);out center tags qt;`;
-    const result=await cachedDirectory(`${action}:${action==='amenities'?'v6':'v5'}:${lat}:${lon}:${radius}`,async()=>{
-      const elements=await fetchOverpass(query,{endpoints:overpassEndpoints(settings)});
+    let usedTomTomFallback=false;
+    const result=await cachedDirectory(`${action}:${action==='amenities'?'v6':'v7'}:${lat}:${lon}:${radius}`,async()=>{
       if(action==='stations'){
-        const deduped=[...new Map(elements.map(e=>[`${e.type}/${e.id}`,e])).values()];
-        return deduped.map(e=>normalizeStation(e,point)).filter(Boolean).sort((a,b)=>a!.distance-b!.distance).slice(0,250);
+        let overpassError: unknown = null;
+        try {
+          const elements=await fetchOverpass(query,{endpoints:overpassEndpoints(settings)});
+          const deduped=[...new Map(elements.map(e=>[`${e.type}/${e.id}`,e])).values()];
+          const mapped=deduped.map(e=>normalizeStation(e,point)).filter(Boolean).sort((a,b)=>a!.distance-b!.distance).slice(0,250);
+          if(mapped.length)return mapped;
+          overpassError = new ServiceError('No charging stations were confirmed by directory providers for this area right now. Try again shortly.', 503);
+        } catch (error) {
+          overpassError=error;
+        }
+        try {
+          const tomtomStations=await fetchTomTomStations(point,radius,settings);
+          if(tomtomStations.length){usedTomTomFallback=true;return tomtomStations;}
+        } catch { /* Keep the community directory path when fallback providers fail. */ }
+        if(overpassError)throw overpassError;
+        return [] as Station[];
       }
+      const elements=await fetchOverpass(query,{endpoints:overpassEndpoints(settings)});
       return normalizeAmenities(elements,point);
-    });return Response.json(result,{headers:{'Cache-Control':'private, no-store'}});
+    });
+    if(action==='stations'&&usedTomTomFallback){
+      const notice=[result.notice,'Community directory refresh was unavailable, so TomTom fallback station listings are shown.'].filter(Boolean).join(' ');
+      return Response.json({...result,notice},{headers:{'Cache-Control':'private, no-store'}});
+    }
+    return Response.json(result,{headers:{'Cache-Control':'private, no-store'}});
   }
   if(action==='route') {
     const from=coords.parse({lat:q.get('lat')??undefined,lon:q.get('lon')??undefined});const to=coords.parse({lat:q.get('toLat')??undefined,lon:q.get('toLon')??undefined});

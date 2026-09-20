@@ -37,6 +37,8 @@ function parseElements(value: unknown): OSMElement[] {
 export async function fetchOverpass(query: string, options: OverpassOptions = {}): Promise<OSMElement[]> {
   const endpoints = [...new Set(options.endpoints || directoryProviders)].slice(0, 3);
   const canRetry = (error: unknown) => error instanceof TypeError || (error instanceof DOMException && error.name === 'TimeoutError');
+  let sawBusyStatus = false;
+  let sawSuccessfulEmptyResponse = false;
   for (const endpoint of endpoints) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -45,13 +47,21 @@ export async function fetchOverpass(query: string, options: OverpassOptions = {}
           headers: { Accept: 'application/json', 'User-Agent': 'VoltRoute/2.0 (+https://voltroutes.com)' },
           signal: AbortSignal.timeout(options.timeoutMs ?? 24000),
         });
-        // Do not rotate providers to work around access restrictions or quotas.
-        if (response.status === 429 || response.status === 406) throw new ServiceError('The directory service is busy. Please wait at least 30 seconds before retrying.', 429);
-        if (!response.ok && response.status !== 408 && response.status < 500) throw new ServiceError('The directory connection could not be used. Please try again later.', 502);
+        if (response.status === 429 || response.status === 406) {
+          sawBusyStatus = true;
+          break;
+        }
+        if (!response.ok && response.status !== 408 && response.status < 500) break;
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return parseElements(await response.json());
+        const elements = parseElements(await response.json());
+        if (elements.length > 0) return elements;
+        sawSuccessfulEmptyResponse = true;
+        break;
       } catch (error) {
-        if (error instanceof ServiceError) throw error;
+        if (error instanceof ServiceError) {
+          if (error.status === 429) sawBusyStatus = true;
+          break;
+        }
         if (attempt === 0 && canRetry(error)) continue;
         // No coordinates, query text, credentials or provider response bodies in logs.
         console.warn('Directory provider unavailable', { host: new URL(endpoint).hostname, reason: error instanceof Error && /^HTTP \d{3}$/.test(error.message) ? error.message : 'timeout, network or incomplete response' });
@@ -59,5 +69,7 @@ export async function fetchOverpass(query: string, options: OverpassOptions = {}
       }
     }
   }
+  if (sawBusyStatus) throw new ServiceError('The charging directory is currently busy. Please retry in about 30 seconds.', 429);
+  if (sawSuccessfulEmptyResponse) throw new ServiceError('No charging stations were confirmed by directory providers for this area right now. Try again shortly.', 503);
   throw new ServiceError('Charging map listings could not be loaded from any directory connection. Please retry shortly. This does not mean there are no chargers in this area.');
 }

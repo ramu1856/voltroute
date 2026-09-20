@@ -3,14 +3,21 @@
 import { useEffect, useMemo } from "react";
 
 const productionSiteUrl = "https://voltroutes.com/";
+const workerSiteUrl = "https://site-creator-vinext-starter.voltroutes.workers.dev/";
 
 export default function AuthCallbackPage() {
   const target = useMemo(() => {
     if (typeof window === "undefined") return null;
     const currentOrigin = window.location.origin;
-    const origin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(currentOrigin)
+    const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(currentOrigin);
+    const normalized = currentOrigin.toLowerCase();
+    const origin = isLocal
       ? currentOrigin
-      : productionSiteUrl;
+      : normalized === "https://site-creator-vinext-starter.voltroutes.workers.dev"
+        ? workerSiteUrl
+        : normalized === "https://voltroutes.com" || normalized === "https://www.voltroutes.com"
+          ? productionSiteUrl
+          : productionSiteUrl;
     const url = new URL("/", origin);
     if (window.location.hash) url.hash = window.location.hash.slice(1);
     return url.toString();
