@@ -4,7 +4,7 @@ import { Phone, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabaseBrowser } from '@/lib/supabase-client';
 
-const hostedAuthCallback='https://voltroutes.com/callback';
+const hostedAuthCallback='https://voltroutes.com/';
 function oauthRedirectTarget() {
   return hostedAuthCallback;
 }
