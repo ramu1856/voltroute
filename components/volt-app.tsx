@@ -161,6 +161,11 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
     <section className="mb-4 mt-[-4px] rounded-xl border border-[#4b6752] bg-[#152a1f] p-3" aria-label="Why plan with VoltRoute">
      <h2 className="mb-1 text-[1.04rem] text-[#eaf8ef]">Plan with a backup before you drive</h2>
      <p className="mb-2 text-[0.86rem] leading-relaxed text-[#bdd0c3]">VoltRoute combines route battery checks, backup validation, and confidence labels in one flow so you can make a charging decision faster.</p>
+     <div className="mb-2 flex flex-wrap gap-1 text-[0.73rem] text-[#dff4e7]">
+      <span className="rounded-full border border-[#5b7b64] px-2 py-0.5">13 trip checks</span>
+      <span className="rounded-full border border-[#5b7b64] px-2 py-0.5">Multi-stop itinerary (beta)</span>
+      <span className="rounded-full border border-[#5b7b64] px-2 py-0.5">Queue-window forecasting</span>
+     </div>
      <ul className="grid gap-1 pl-4 text-[0.82rem] leading-relaxed text-[#ccddd3]">
       <li><strong>No-Stranding Mode:</strong> Require a separate reachable fallback, not just one suggested stop.</li>
       <li><strong>Trip Safety Score + Risk Map:</strong> See where confidence drops along your route.</li>
