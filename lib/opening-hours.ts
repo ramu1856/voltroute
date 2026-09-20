@@ -3,7 +3,17 @@ import tzLookup from '@photostructure/tz-lookup';
 type Interval = { start: number; end: number };
 type Rule = { days: number[]; intervals: Interval[]; closed: boolean };
 type Schedule = { rules: Rule[]; allDayEveryDay: boolean; hasExceptions: boolean };
-type HoursStation = { hours: string; lat: number; lon: number; timeZone?: string | null; status?: string };
+type HoursStation = {
+  hours: string;
+  lat: number;
+  lon: number;
+  timeZone?: string | null;
+  status?: string;
+  name?: string;
+  network?: string;
+  access?: string;
+  power?: number | null;
+};
 export type HoursInfo = {
   state: 'open' | 'closed' | 'unknown' | 'unavailable';
   is24Hours: boolean;
@@ -135,6 +145,33 @@ function stationZone(station: HoursStation): { timeZone: string | null; estimate
   return { timeZone, estimated: true };
 }
 
+function estimatedHoursFallback(station: HoursStation) {
+  const source = `${station.name || ''} ${station.network || ''}`.toLowerCase();
+  const known24x7 = ['supercharger', 'tesla', 'electrify america', 'evgo', 'chargepoint', 'blink', 'bp pulse', 'shell recharge', 'ev connect', 'francis energy'];
+  if (known24x7.some(keyword => source.includes(keyword))) {
+    return {
+      label: 'Likely 24/7 · estimated',
+      explanation: 'This network is often 24/7, but published station hours were not listed in this map record. Confirm in the operator app before travel.',
+    };
+  }
+  if (station.access === 'customers') {
+    return {
+      label: 'Business-hours likely · estimated',
+      explanation: 'This charger is marked for customers and may follow host business hours, but no schedule was published in this listing.',
+    };
+  }
+  if ((station.power ?? 0) >= 100) {
+    return {
+      label: 'Likely extended hours · estimated',
+      explanation: 'High-power public chargers are often available for extended hours, but no official station schedule was listed.',
+    };
+  }
+  return {
+    label: 'Hours not listed',
+    explanation: 'No opening hours in this map listing.',
+  };
+}
+
 export function evaluateStationHours(station: HoursStation, at: Date): HoursInfo {
   const zone = stationZone(station);
   const base = { timeZone: zone.timeZone, timeZoneEstimated: zone.estimated };
@@ -144,7 +181,11 @@ export function evaluateStationHours(station: HoursStation, at: Date): HoursInfo
   const schedule = parseSchedule(station.hours);
   const noHours = !station.hours || station.hours === 'Hours not listed';
   if (!schedule) {
-    return { ...base, state: 'unknown', is24Hours: false, label: noHours ? 'Hours not listed' : 'Hours unconfirmed', explanation: noHours ? 'No opening hours in this map listing.' : 'This schedule includes unsupported expressions we cannot safely evaluate. Check the original listing.' };
+    if (noHours) {
+      const estimated = estimatedHoursFallback(station);
+      return { ...base, state: 'unknown', is24Hours: false, label: estimated.label, explanation: estimated.explanation };
+    }
+    return { ...base, state: 'unknown', is24Hours: false, label: 'Hours unconfirmed', explanation: 'This schedule includes unsupported expressions we cannot safely evaluate. Check the original listing.' };
   }
   if (schedule.allDayEveryDay) {
     return { ...base, state: 'open', is24Hours: true, label: '24/7 listed', explanation: schedule.hasExceptions ? 'The published schedule is 24/7 with extra exception rules (such as holidays). Charger operation and free ports are unverified.' : 'The published schedule covers every day, all day. Charger operation and free ports are unverified.' };
