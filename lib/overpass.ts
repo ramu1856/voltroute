@@ -10,10 +10,15 @@ export const directoryProviders = [
 ] as const;
 
 export function overpassEndpoints(settings: Record<string, string | undefined>) {
-  const first = settings.OVERPASS_URL || directoryProviders[0];
-  const second = settings.OVERPASS_FALLBACK_URL || directoryProviders.find(url => url !== first)!;
-  const third = settings.OVERPASS_SECONDARY_FALLBACK_URL || directoryProviders.find(url => url !== first && url !== second)!;
-  return [...new Set([first, second, third])];
+  const first = settings.OVERPASS_URL?.trim() || directoryProviders[0];
+  const secondConfigured = settings.OVERPASS_FALLBACK_URL?.trim();
+  const thirdConfigured = settings.OVERPASS_SECONDARY_FALLBACK_URL?.trim();
+  if (secondConfigured) {
+    return [...new Set([first, secondConfigured, thirdConfigured].filter(Boolean) as string[])];
+  }
+  const second = directoryProviders.find(url => url !== first) || directoryProviders[0];
+  const third = thirdConfigured || directoryProviders.find(url => url !== first && url !== second);
+  return [...new Set([first, second, third].filter(Boolean) as string[])];
 }
 
 type OverpassOptions = { endpoints?: string[]; fetcher?: typeof fetch; timeoutMs?: number };
@@ -31,6 +36,7 @@ function parseElements(value: unknown): OSMElement[] {
 
 export async function fetchOverpass(query: string, options: OverpassOptions = {}): Promise<OSMElement[]> {
   const endpoints = [...new Set(options.endpoints || directoryProviders)].slice(0, 3);
+  const canRetry = (error: unknown) => error instanceof TypeError || (error instanceof DOMException && error.name === 'TimeoutError');
   for (const endpoint of endpoints) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -46,9 +52,10 @@ export async function fetchOverpass(query: string, options: OverpassOptions = {}
         return parseElements(await response.json());
       } catch (error) {
         if (error instanceof ServiceError) throw error;
-        if (attempt === 0) continue;
+        if (attempt === 0 && canRetry(error)) continue;
         // No coordinates, query text, credentials or provider response bodies in logs.
         console.warn('Directory provider unavailable', { host: new URL(endpoint).hostname, reason: error instanceof Error && /^HTTP \d{3}$/.test(error.message) ? error.message : 'timeout, network or incomplete response' });
+        break;
       }
     }
   }

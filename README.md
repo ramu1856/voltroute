@@ -117,6 +117,8 @@ Replace the filename with the pending migration and `DB` with your D1 binding na
 - `npm run db:generate`: generate Drizzle migrations after schema changes
 - `npm run qa:smart-stop`: run a 5-route Smart Stop smoke test (suggestions, itinerary status, projected score, and API latency)
 
+`/data-sources` now includes a live provider-health snapshot from `/api/provider-health` so you can quickly confirm OSRM and charger-directory endpoint reachability.
+
 ## Smart Stop QA smoke pass
 
 1. Start the app locally (`npm run dev -- --port 43125`).

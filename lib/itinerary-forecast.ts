@@ -41,6 +41,14 @@ export function projectMultiStopItinerary(
   const start = clamp(fromMile, 0, total);
   let cursor = start;
   let battery = clamp(fromBattery, 0, 100);
+  if (battery <= input.reserve + 5) {
+    return {
+      projectedStops: 0,
+      projectedCoveredMiles: cursor,
+      remainingMiles: Math.max(0, total - cursor),
+      legs: [],
+    };
+  }
   let projectedStops = 0;
   const legs: ItineraryLeg[] = [];
 

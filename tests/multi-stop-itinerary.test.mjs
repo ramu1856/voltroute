@@ -9,7 +9,7 @@ const input = smartStopSchema.parse({
   origin: { lat: 41.88, lon: -87.63, label: 'Start' },
   destination: { lat: 40.7, lon: -74.0, label: 'End' },
   profile: { name: 'Example EV', connector: 'CCS1', range: 260 },
-  battery: 72,
+  battery: 85,
   reserve: 15,
   maxDetourMinutes: 25,
   batteryCapacity: 75,
