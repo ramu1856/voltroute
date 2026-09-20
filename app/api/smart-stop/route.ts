@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 import { cached, database, failure, fetchJson, limit, sameOrigin, ServiceError, LocalRateLimitError } from '@/lib/server-data';
 import { getOptionalUser } from '@/lib/supabase-server';
-import { normalizeStation, type Point, type RoadRoute, type Station } from '@/lib/ev';
+import { chargingCheckpoints, normalizeStation, type Point, type RoadRoute, type Station } from '@/lib/ev';
 import { fetchOverpass, overpassEndpoints } from '@/lib/overpass';
 import { arrivalBattery, corridorQuery, rankStops, routeCoordinates, shortlistStations, smartStopSchema, type SmartStopResult } from '@/lib/smart-stop';
 import { parseChargingRoadGraph, parseRoadResponse } from '@/lib/smart-stop-routing';
@@ -11,6 +11,8 @@ import type { PersonalReport } from '@/lib/station-evidence';
 import { preferStops, preferenceReason } from '@/lib/route-preferences';
 import { stopBudget } from '@/lib/trip-budget';
 import { buildMultiStopItinerary } from '@/lib/multi-stop-itinerary';
+import { normalizeTomTomDirectoryResults } from '@/lib/tomtom-directory';
+import { WORKER_SITE_URL } from '@/lib/site-config';
 
 async function key(prefix:string,value:string){const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return `${prefix}:${Array.from(new Uint8Array(hash),v=>v.toString(16).padStart(2,'0')).join('')}`;}
 async function providerCache<T>(cacheKey:string,provider:string,loader:()=>Promise<T>){
@@ -44,12 +46,44 @@ export async function POST(request:Request){
     if(arrivalBattery(input,baseRoute.miles)>=input.reserve){result.state='no-charge-needed';result.message=`Your entered range suggests arrival with ${arrivalBattery(input,baseRoute.miles).toFixed(1)}% battery, above your ${input.reserve}% reserve. No charging stop is needed under these assumptions.`;return respond();}
     if(input.battery<=input.reserve){result.state='reserve-too-low';result.message=`Your starting battery is at or below your ${input.reserve}% reserve. No driving recommendation can preserve that reserve. Charge before leaving or use a roadside-assistance service.`;return respond();}
     const query=corridorQuery(input,baseRoute);
+    async function tomtomFallbackStations(route: RoadRoute) {
+      const apiKey=settings.TOMTOM_API_KEY?.trim();
+      if(!apiKey)return [] as Station[];
+      const referer=settings.TOMTOM_REFERER?.trim() || WORKER_SITE_URL;
+      const samples=[
+        input.origin,
+        ...chargingCheckpoints(route,input.profile,input.battery).slice(0,2).map(point=>({lat:point.lat,lon:point.lon,label:'Route checkpoint'})),
+        input.destination,
+      ];
+      const deduped=[...new Map(samples.map(sample=>[`$${sample.lat.toFixed(3)}:${sample.lon.toFixed(3)}`,sample])).values()];
+      const collected: Station[]=[];
+      for(const sample of deduped){
+        try{
+          const nearby=await providerCache(await key('smart-tomtom:v2',`${sample.lat.toFixed(3)}:${sample.lon.toFixed(3)}`),'tomtom',async()=>{
+            const url=new URL('/search/2/nearbySearch/.json','https://api.tomtom.com');
+            url.search=new URLSearchParams({
+              key:apiKey,
+              lat:String(sample.lat),
+              lon:String(sample.lon),
+              radius:'50000',
+              limit:'100',
+              categorySet:'7309',
+            }).toString();
+            return fetchJson(url.href,{headers:{Referer:referer}}) as Promise<{results?:unknown[]}>;
+          });
+          collected.push(...normalizeTomTomDirectoryResults((nearby.data.results || []) as unknown[], input.origin));
+          if(collected.length>=300)break;
+        }catch{/* Keep trying alternative route samples. */}
+      }
+      return [...new Map(collected.map(station=>[station.id,station])).values()].slice(0,400);
+    }
     const directory=await providerCache(await key('smart-corridor:v1',query),'overpass',async()=>{
       const elements=await fetchOverpass(query,{endpoints:overpassEndpoints(settings)});
       return {stations:elements.slice(0,400).map(e=>normalizeStation(e,input.origin)).filter((station):station is Station=>station!==null),limited:elements.length>400};
     });
     let mapped=directory.data;
     let mappedFetchedAt=directory.fetchedAt;
+    let usedTomTomFallback=false;
     if(!mapped.stations.length){
       try{
         // Cached empty station lists can occur during short provider outages.
@@ -59,13 +93,24 @@ export async function POST(request:Request){
         if(recoveryStations.length){mapped={stations:recoveryStations,limited:recoveryElements.length>400};mappedFetchedAt=new Date().toISOString();}
       }catch{/* Keep the cached snapshot if recovery cannot refresh. */}
     }
+    if(!mapped.stations.length){
+      const tomtomStations=await tomtomFallbackStations(baseRoute);
+      if(tomtomStations.length){
+        mapped={stations:tomtomStations,limited:false};
+        mappedFetchedAt=new Date().toISOString();
+        usedTomTomFallback=true;
+      }
+    }
     result.mappedCount=mapped.stations.length;result.directoryFetchedAt=mappedFetchedAt;result.searchLimited=mapped.limited;
     const records=user?await database().prepare("SELECT payload,updated FROM saved_items WHERE owner=? AND kind='report' ORDER BY updated DESC LIMIT 200").bind(user.userId).all<{payload:string;updated:number}>():{results:[] as {payload:string;updated:number}[]};
     const reports:Record<string,PersonalReport>={};
     for(const row of records.results){try{const value=JSON.parse(row.payload);if(typeof value.sourceId==='string'&&!reports[value.sourceId]&&['working','busy','broken'].includes(value.status))reports[value.sourceId]={sourceId:value.sourceId,status:value.status,reportedAt:row.updated};}catch{/* Ignore an unreadable old personal report. */}}
     const shortlist=shortlistStations(mapped.stations.filter(station=>!input.excludedStationIds?.includes(station.id)),input,baseRoute,reports,Date.now());
     result.searchLimited ||= mapped.stations.length>shortlist.length;
-    if(!shortlist.length)return respond();
+    if(!shortlist.length){
+      if(usedTomTomFallback)result.message='Community directory results were unavailable on this corridor. TomTom fallback listings were checked, but none passed connector, reserve, and access filters.';
+      return respond();
+    }
     const points=[input.origin,...shortlist,input.destination];
     const coordinates=routeCoordinates(points);
     const matrix=await providerCache(await key('smart-matrix:v2',coordinates),'osrm',async()=>{
@@ -134,6 +179,7 @@ export async function POST(request:Request){
         now: Date.now(),
       });
       result.preferenceSummary.explanation+=` Final road validation compared ${confirmed.length} of the top two candidates.`;
+      if(usedTomTomFallback)result.comparisonNote=[result.comparisonNote,'Directory fallback mode: TomTom listings were used because community corridor data was unavailable during this calculation.'].filter(Boolean).join(' ');
       result.message='Suggested charging stop using your selected preference. Check operator access and availability before departure.';
       result.calculatedAt=new Date().toISOString();result.validUntil=new Date(Date.now()+10*60_000).toISOString();return respond();
     }

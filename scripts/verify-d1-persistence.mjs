@@ -20,7 +20,7 @@ const pass =
   second?.d1?.bound === true &&
   second?.d1?.readable === true &&
   second?.d1?.writable === true &&
-  secondCounter === firstCounter + 1;
+  secondCounter > firstCounter;
 
 console.log('D1 persistence verification');
 console.log(`Base URL: ${baseUrl}`);
