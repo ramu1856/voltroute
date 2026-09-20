@@ -262,6 +262,35 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
      </ul>
      <div className="mt-3 grid gap-2"><Button type="button" onClick={()=>setWorkspaceTab('trip')}>Start Smart Stop planning</Button><Link className="text-[0.85rem] text-[#b8f5c5]" href="/about">See full product comparison ↗</Link></div>
     </section>
+    <section className="comparison-snapshot" aria-label="VoltRoute compared with typical EV tools">
+     <div className="comparison-head">
+      <p className="eyebrow">Competitive snapshot</p>
+      <h2>Why drivers choose VoltRoute over typical charger apps</h2>
+      <p>Most EV tools are good at listing stations. VoltRoute focuses on decision confidence before you commit to a stop.</p>
+     </div>
+     <div className="comparison-grid">
+      <article>
+       <h3>Fallback planning</h3>
+       <p><strong>Typical apps:</strong> Primary stop only</p>
+       <p><strong>VoltRoute:</strong> Backup-first route logic with reachable alternatives</p>
+      </article>
+      <article>
+       <h3>Risk visibility</h3>
+       <p><strong>Typical apps:</strong> One final route estimate</p>
+       <p><strong>VoltRoute:</strong> Section-level risk map (covered, review, reserve-gap)</p>
+      </article>
+      <article>
+       <h3>Data honesty</h3>
+       <p><strong>Typical apps:</strong> Unknowns mixed into single status</p>
+       <p><strong>VoltRoute:</strong> Freshness labels + transparent unknowns</p>
+      </article>
+      <article>
+       <h3>Trip handoff</h3>
+       <p><strong>Typical apps:</strong> Manual re-entry between devices</p>
+       <p><strong>VoltRoute:</strong> Shareable trip links with EV profile + battery context</p>
+      </article>
+     </div>
+    </section>
     <Tabs value={workspaceTab} onValueChange={setWorkspaceTab}><TabsList className="vr-tabs"><TabsTrigger value="explore">Explore</TabsTrigger><TabsTrigger value="trip">Plan a trip</TabsTrigger><TabsTrigger value="saved">Saved</TabsTrigger></TabsList>
     <TabsContent value="explore" className="tab-body"><PlacePicker label="Search a US city or place" value={origin} onSelect={setOrigin}/>
      <div className="inline-controls"><Select value={radius} onValueChange={setRadius}><SelectTrigger aria-label="Search radius"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="160934">100-mile area</SelectItem><SelectItem value="241402">150-mile area</SelectItem><SelectItem value="321869">200-mile area</SelectItem><SelectItem value="402336">250-mile area</SelectItem></SelectContent></Select><Button variant="outline" aria-label="Use current location" disabled={locating} onClick={locate}><LocateFixed/>{locating?'Locating…':'Near me'}</Button></div>
