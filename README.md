@@ -115,6 +115,19 @@ Replace the filename with the pending migration and `DB` with your D1 binding na
 - `npm run build`: build the deployable Sites artifact
 - `npm run start`: preview the built Worker locally with D1/R2 support
 - `npm run db:generate`: generate Drizzle migrations after schema changes
+- `npm run qa:smart-stop`: run a 5-route Smart Stop smoke test (suggestions, itinerary status, projected score, and API latency)
+
+## Smart Stop QA smoke pass
+
+1. Start the app locally (`npm run dev -- --port 43125`).
+2. In another terminal, run `npm run qa:smart-stop`.
+3. The command prints scenario-level results with:
+   - response status
+   - planner state
+   - itinerary status and stop count
+   - projected itinerary score
+   - latency
+4. Exit code is non-zero if baseline expectations fail (for example: non-200 responses or suggested plans without itinerary stops).
 
 When using the Sites plugin, follow its skill instructions for installation, builds, and publishing. These npm commands remain available for standalone use.
 
