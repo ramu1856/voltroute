@@ -234,6 +234,7 @@
 .auth-phone{display:flex;gap:.75rem;align-items:flex-start;margin-top:1rem;padding:1rem;border:1px solid rgba(255,255,255,.09);border-radius:14px;background:rgba(255,255,255,.035)}.auth-phone>svg{flex:0 0 auto;width:19px;margin-top:2px;color:#9aafa5}.auth-phone p{margin:.25rem 0 0;color:#91a69c;font-size:.84rem;line-height:1.4}
 .account-nav button{border:0;background:transparent;color:inherit;font:inherit;cursor:pointer}.account-nav button:hover{text-decoration:underline}.account-nav button:disabled{opacity:.6;cursor:wait}
 .account-prompt{margin:.75rem 0;padding:1rem;border:1px solid rgba(145,255,183,.18);border-radius:14px;background:rgba(75,190,104,.07)}.account-prompt p{margin:0 0 .7rem;color:#b8c8c0;line-height:1.45}
+.account-auth-actions{display:flex;flex-wrap:wrap;gap:.6rem}
 
 .trip-intelligence{padding:20px;border-bottom:1px solid #46614f;background:#10251a;min-width:0;overflow-wrap:anywhere}
 .trip-intelligence-heading{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}.trip-intelligence-heading h2{margin:2px 0 0;font-size:1.25rem}.trip-intelligence-state{display:flex;align-items:center;gap:7px;border:1px solid #5d7b66;border-radius:999px;padding:6px 10px;font-size:.8125rem;color:#d9eadf;background:#1a3424}.trip-intelligence-note{font-size:.875rem;line-height:1.6;color:#bdd0c3;margin:12px 0 16px}
