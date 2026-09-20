@@ -10,6 +10,7 @@ import { assignBackups, attachBackup, backupOptions, evaluateBackup, type Backup
 import type { PersonalReport } from '@/lib/station-evidence';
 import { preferStops, preferenceReason } from '@/lib/route-preferences';
 import { stopBudget } from '@/lib/trip-budget';
+import { buildMultiStopItinerary } from '@/lib/multi-stop-itinerary';
 
 async function key(prefix:string,value:string){const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return `${prefix}:${Array.from(new Uint8Array(hash),v=>v.toString(16).padStart(2,'0')).join('')}`;}
 async function providerCache<T>(cacheKey:string,provider:string,loader:()=>Promise<T>){
@@ -110,6 +111,17 @@ export async function POST(request:Request){
       result.selected=final;result.selectedPrice=stopBudget(final,input,Date.now()).price;
       result.candidates=[final,...preferred.ranked.filter(stop=>stop.station.id!==final.station.id)].slice(0,3);
       result.route=confirmed.find(c=>c.stop.station.id===final.station.id)!.route;result.state='suggested';
+      result.itinerary=buildMultiStopItinerary({
+        input,
+        selected: final,
+        shortlist,
+        legs: matrix.data.legs,
+        connections: matrix.data.connections,
+        baseRouteMiles: result.route.miles,
+        baseRouteMinutes: result.route.minutes,
+        reports,
+        now: Date.now(),
+      });
       result.preferenceSummary.explanation+=` Final road validation compared ${confirmed.length} of the top two candidates.`;
       result.message='Suggested charging stop using your selected preference. Check operator access and availability before departure.';
       result.calculatedAt=new Date().toISOString();result.validUntil=new Date(Date.now()+10*60_000).toISOString();return respond();

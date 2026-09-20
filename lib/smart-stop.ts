@@ -5,6 +5,7 @@ import { evaluateStationHours, type HoursInfo } from './opening-hours.ts';
 import type { BackupOption } from './backup-charger.ts';
 import type { PreferenceSummary } from './route-preferences.ts';
 import type { PriceInfo } from './station-evidence.ts';
+import type { MultiStopItinerary } from './multi-stop-itinerary.ts';
 
 export const smartStopSchema = tripSchema.extend({
   excludedStationIds: z.array(z.string().regex(/^(node|way|relation)\/\d+$/)).max(20).optional(),
@@ -43,6 +44,7 @@ export type SmartStopResult = {
   routeOptions?: { stop: RankedStop; route: RoadRoute; price: PriceInfo }[];
   comparisonNote?: string;
   userSelectedRoute?: boolean;
+  itinerary?: MultiStopItinerary;
 };
 
 export function reachableMiles(input: SmartStopInput) { return Math.max(0, input.profile.range * (input.battery - input.reserve) / 100); }
