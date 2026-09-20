@@ -34,7 +34,7 @@ function nameOverlap(a:string,b:string){
 export function chooseTomTomAvailabilitySource(
   results:NearbyResult[],
   station:{lat:number;lon:number;name:string;network:string},
-  maxDistanceMiles=.2,
+  maxDistanceMiles=.25,
 ){
   const candidates=results.flatMap(result=>{
     const lat=result.position?.lat,lon=result.position?.lon,id=result.dataSources?.chargingAvailability?.id;
@@ -50,7 +50,7 @@ export function chooseTomTomAvailabilitySource(
   const best=candidates[0];
   // For a weak name match, only trust a very close location. This avoids
   // attaching another station's live data in dense charging areas.
-  if(best.overlap===0&&best.distanceMiles>.06)return null;
+  if(best.overlap===0&&best.distanceMiles>.08)return null;
   return best;
 }
 

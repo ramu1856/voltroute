@@ -54,13 +54,22 @@ export async function GET(request:Request) {
     if(!apiKey)return Response.json({data:null,notice:'Live operator status is not configured yet.'},{headers:{'Cache-Control':'private, no-store'}});
     const tomtomConnector=TOMTOM_CONNECTOR[connector];
     try{
-      const nearbyUrl=new URL('/search/2/nearbySearch/.json','https://api.tomtom.com');
-      nearbyUrl.search=new URLSearchParams({key:apiKey,lat:String(point.lat),lon:String(point.lon),radius:'650',limit:'12',connectorSet:tomtomConnector}).toString();
-      const nearby=await cached(`tomtom-nearby:v1:${point.lat.toFixed(4)}:${point.lon.toFixed(4)}:${tomtomConnector}`,'tomtom-nearby',120,async()=>{
-        const response=await fetchTomTomWithRefererFallback<{results:unknown[]}>(nearbyUrl.href,settings);
+      const nearbyWithConnectorUrl=new URL('/search/2/nearbySearch/.json','https://api.tomtom.com');
+      nearbyWithConnectorUrl.search=new URLSearchParams({key:apiKey,lat:String(point.lat),lon:String(point.lon),radius:'650',limit:'12',connectorSet:tomtomConnector}).toString();
+      const nearbyWithConnector=await cached(`tomtom-nearby:v1:${point.lat.toFixed(4)}:${point.lon.toFixed(4)}:${tomtomConnector}`,'tomtom-nearby',120,async()=>{
+        const response=await fetchTomTomWithRefererFallback<{results:unknown[]}>(nearbyWithConnectorUrl.href,settings);
         return response.data;
       });
-      const source=chooseTomTomAvailabilitySource((nearby.data.results||[]) as Parameters<typeof chooseTomTomAvailabilitySource>[0],{...point,name,network});
+      let source=chooseTomTomAvailabilitySource((nearbyWithConnector.data.results||[]) as Parameters<typeof chooseTomTomAvailabilitySource>[0],{...point,name,network});
+      if(!source){
+        const nearbyAnyConnectorUrl=new URL('/search/2/nearbySearch/.json','https://api.tomtom.com');
+        nearbyAnyConnectorUrl.search=new URLSearchParams({key:apiKey,lat:String(point.lat),lon:String(point.lon),radius:'650',limit:'12',categorySet:'7309'}).toString();
+        const nearbyAnyConnector=await cached(`tomtom-nearby:any:v1:${point.lat.toFixed(4)}:${point.lon.toFixed(4)}`,'tomtom-nearby',120,async()=>{
+          const response=await fetchTomTomWithRefererFallback<{results:unknown[]}>(nearbyAnyConnectorUrl.href,settings);
+          return response.data;
+        });
+        source=chooseTomTomAvailabilitySource((nearbyAnyConnector.data.results||[]) as Parameters<typeof chooseTomTomAvailabilitySource>[0],{...point,name,network});
+      }
       if(!source)return Response.json({data:null,notice:'No matching TomTom live-availability station was confirmed near this map listing.'},{headers:{'Cache-Control':'private, no-store'}});
       const availabilityUrl=new URL('/search/2/chargingAvailability.json','https://api.tomtom.com');
       availabilityUrl.search=new URLSearchParams({key:apiKey,chargingAvailability:source.id,connectorSet:tomtomConnector}).toString();
