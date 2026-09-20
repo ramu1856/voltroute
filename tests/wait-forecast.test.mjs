@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { predictWaitForecast, waitWindowLabel } from '../lib/wait-forecast.ts';
+import { predictWaitForecast, predictWaitAtEta, waitWindowLabel } from '../lib/wait-forecast.ts';
 
 test('live free ports produce a low wait prediction', () => {
   const forecast = predictWaitForecast({
@@ -67,4 +67,26 @@ test('recent status stays uncertain and unknown data stays unavailable', () => {
   });
   assert.equal(unknown.state, 'unavailable');
   assert.equal(waitWindowLabel(unknown), 'Wait time unavailable');
+});
+
+test('eta-based wait widens uncertainty with longer arrival horizon', () => {
+  const live = {
+    freshness: 'live',
+    condition: 'available',
+    label: 'Live',
+    detail: '',
+    source: 'Operator',
+    sourceUrl: null,
+    observedAt: null,
+    ageMs: 1000,
+    availablePorts: 1,
+    totalPorts: 4,
+  };
+  const near = predictWaitAtEta(live, 8);
+  const medium = predictWaitAtEta(live, 35);
+  const far = predictWaitAtEta(live, 140);
+  assert.equal(near.state, 'predicted');
+  assert.equal(medium.state, 'predicted');
+  assert.equal(medium.confidence, 'moderate');
+  assert.equal(far.state, 'unavailable');
 });
