@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { Zap, LocateFixed, Search, Navigation, Utensils, Toilet, Bookmark, Route, Car, ArrowRight, MapPin, X, AlertTriangle, Clock3, CheckCircle2 } from 'lucide-react';
+import { Zap, LocateFixed, Search, Navigation, Utensils, Toilet, Bookmark, Route, Car, ArrowRight, MapPin, X, AlertTriangle, Clock3, CheckCircle2, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -39,6 +39,54 @@ type Saved = {id:string;kind:'profile'|'station'|'trip'|'report';payload:Profile
 async function api<T>(path:string,init?:RequestInit,accessToken?:string):Promise<T>{const headers=new Headers(init?.headers);if(accessToken)headers.set('Authorization',`Bearer ${accessToken}`);const response=await fetch(path,{...init,headers});const data=await response.json() as T & {error?:string};if(!response.ok)throw new Error(data.error || 'Something went wrong. Please try again.');return data;}
 function directions(p:{lat:number;lon:number},walking=false){return `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}&travelmode=${walking?'walking':'driving'}`;}
 function stationLookup(s:Station){return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${s.name} ${s.network} EV charger ${s.lat},${s.lon}`)}`;}
+const tripConnectors: Profile['connector'][] = ['NACS','CCS1','J1772','CHAdeMO'];
+function parseBoundedNumber(raw:string|null,min:number,max:number){
+  if(raw===null)return null;
+  const value=Number(raw);
+  if(!Number.isFinite(value))return null;
+  if(value<min||value>max)return null;
+  return value;
+}
+function parseSharedTripFromUrl():TripInput|null{
+  if(typeof window==='undefined')return null;
+  const search=new URLSearchParams(window.location.search);
+  if(search.get('share')!=='1')return null;
+  const originLabel=search.get('ol');
+  const destinationLabel=search.get('dl');
+  const vehicleName=search.get('vn');
+  const connector=search.get('vc');
+  const originLat=parseBoundedNumber(search.get('olat'),-90,90);
+  const originLon=parseBoundedNumber(search.get('olon'),-180,180);
+  const destinationLat=parseBoundedNumber(search.get('dlat'),-90,90);
+  const destinationLon=parseBoundedNumber(search.get('dlon'),-180,180);
+  const range=parseBoundedNumber(search.get('vr'),30,600);
+  const battery=parseBoundedNumber(search.get('b'),1,100);
+  if(!originLabel||!destinationLabel||!vehicleName||!connector||!tripConnectors.includes(connector as Profile['connector']))return null;
+  if(originLat===null||originLon===null||destinationLat===null||destinationLon===null||range===null||battery===null)return null;
+  return {
+    origin:{lat:originLat,lon:originLon,label:originLabel},
+    destination:{lat:destinationLat,lon:destinationLon,label:destinationLabel},
+    profile:{name:vehicleName,connector:connector as Profile['connector'],range},
+    battery,
+  };
+}
+function buildSharedTripUrl(input:TripInput){
+  const url=new URL(window.location.href);
+  url.hash='';
+  url.search='';
+  url.searchParams.set('share','1');
+  url.searchParams.set('olat',String(input.origin.lat));
+  url.searchParams.set('olon',String(input.origin.lon));
+  url.searchParams.set('ol',input.origin.label);
+  url.searchParams.set('dlat',String(input.destination.lat));
+  url.searchParams.set('dlon',String(input.destination.lon));
+  url.searchParams.set('dl',input.destination.label);
+  url.searchParams.set('vn',input.profile.name);
+  url.searchParams.set('vc',input.profile.connector);
+  url.searchParams.set('vr',String(input.profile.range));
+  url.searchParams.set('b',String(input.battery));
+  return url.toString();
+}
 function PlacePicker({label,value,onSelect}:{label:string;value:Point;onSelect:(p:Point)=>void}){
  const [q,setQ]=useState(value.label),[places,setPlaces]=useState<Point[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const revision=useRef(0);
@@ -68,6 +116,21 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const accessToken=session?.access_token;
  const signedIn=!!session;
  const currentTime=hoursClock??0;
+ useEffect(()=>{
+  let cancelled=false;
+  const sharedTrip=parseSharedTripFromUrl();
+  if(!sharedTrip)return;
+  queueMicrotask(()=>{
+   if(cancelled)return;
+   setOrigin(sharedTrip.origin);
+   setDestination(sharedTrip.destination);
+   setProfile(sharedTrip.profile);
+   setBattery(sharedTrip.battery);
+   setWorkspaceTab('trip');
+   toast.success('Shared trip loaded. Review details and run route or Smart Stop.');
+  });
+  return()=>{cancelled=true;};
+ },[]);
  const tripAssessment=useMemo(()=>smartPlan?assessTrip(smartPlan,currentTime):null,[smartPlan,currentTime]);
  useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled)setFocusedRisk(null);});return()=>{cancelled=true;};},[smartPlan]);
  const requestId=useRef(0),routeId=useRef(0),liveId=useRef(0);
@@ -129,6 +192,16 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
    if(text.toLowerCase().includes('provider'))toast.error('Google sign-in is not enabled yet. Enable Google provider and try again.');
    else toast.error(text);
    setShowAuth(true);
+  }
+ }
+ async function copyShareTripLink(){
+  const trip:TripInput={origin,destination,profile,battery};
+  const shareUrl=buildSharedTripUrl(trip);
+  try{
+   await navigator.clipboard.writeText(shareUrl);
+   toast.success('Trip share link copied.');
+  }catch{
+   toast.error('Could not copy link automatically. Please retry and allow clipboard access.');
   }
  }
  function showSmartStop(result:SmartStopResult,view:'main'|'backup'='main'){
@@ -197,6 +270,8 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
     <TabsContent value="trip" className="tab-body"><PlacePicker label="From" value={origin} onSelect={setOrigin}/><PlacePicker label="To" value={destination} onSelect={setDestination}/><label className="form-label">Starting battery (%)<input type="number" min={1} max={100} value={battery} onChange={e=>setBattery(Number(e.target.value))}/></label>
      <SmartStopPlanner origin={origin} destination={destination} profile={profile} battery={battery} now={hoursClock} reportsVersion={JSON.stringify(reports)} enteredRates={enteredRates} accessToken={accessToken} onResult={showSmartStop} onClear={()=>setSmartPlan(null)} onView={(result,stop)=>{showSmartStop(result,stop);document.querySelector('.vr-details')?.scrollIntoView({behavior:'smooth',block:'start'});}}/>
      <Button variant="outline" className="full" disabled={routeBusy||battery<1||battery>100||profile.range<30||profile.range>600} onClick={()=>plan()}><Route/>{routeBusy?'Calculating…':'Road route only'}</Button>
+     <Button variant="outline" className="full" onClick={()=>void copyShareTripLink()}><Link2/>Copy trip share link</Button>
+     <p className="muted-small">Share link includes origin, destination, EV profile and battery so anyone can reopen the same trip setup.</p>
      {routeError&&<p className="error-text" role="alert">{routeError}</p>}
      {road&&tripSnapshot&&<section className="route-result"><h3>{Math.round(road.miles)} miles · {Math.floor(road.minutes/60)}h {Math.round(road.minutes%60)}m driving</h3><p>{tripSnapshot.origin.label} → {tripSnapshot.destination.label}</p><strong>{checkpoints.length} estimated charging check{checkpoints.length===1?'':'s'}</strong><p className="muted-small">Planning estimate using your entered range, a 15% reserve and charging to 80%. No traffic, weather, detours or charge time included. This is not a verified EV itinerary.</p>
      {checkpoints[0]&&<Button className="full" onClick={()=>loadStations({...checkpoints[0],label:`Next charging area near mile ${checkpoints[0].mile}`})}><Zap/>Find chargers at next stop</Button>}{checkpoints.slice(0,8).map((p,i)=><Button key={i} variant="outline" className="checkpoint" onClick={()=>loadStations({...p,label:`Route check ${i+1}, near mile ${p.mile}`})}>Find chargers near mile {p.mile}<ArrowRight/></Button>)}{checkpoints.length>8&&<p>Showing the first 8 checks. Break this route into shorter trips.</p>}
