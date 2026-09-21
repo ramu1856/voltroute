@@ -8,7 +8,7 @@ import type { PriceInfo } from './station-evidence.ts';
 import type { MultiStopItinerary } from './multi-stop-itinerary.ts';
 
 export const smartStopSchema = tripSchema.extend({
-  excludedStationIds: z.array(z.string().regex(/^(node|way|relation)\/\d+$/)).max(20).optional(),
+  excludedStationIds: z.array(z.string().regex(/^((node|way|relation)\/\d+|tomtom\/[A-Za-z0-9.,:_-]+)$/)).max(20).optional(),
   reserve: z.number().min(10).max(30).default(15),
   maxDetourMinutes: z.number().min(5).max(60).default(20),
   batteryCapacity: z.number().min(10).max(250).nullable().default(null),
@@ -17,7 +17,7 @@ export const smartStopSchema = tripSchema.extend({
   failureAllowance: z.number().min(1).max(10).default(3),
   failureDelayMinutes: z.number().min(0).max(60).default(10),
   preference: z.enum(['balanced','fastest','cheapest','safest']).default('balanced'),
-  enteredRates: z.record(z.string().regex(/^(node|way|relation)\/\d+$/),z.string().max(12)).refine(rates=>Object.keys(rates).length<=50,'Use at most 50 station rates per plan.').default({}),
+  enteredRates: z.record(z.string().regex(/^((node|way|relation)\/\d+|tomtom\/[A-Za-z0-9.,:_-]+)$/),z.string().max(12)).refine(rates=>Object.keys(rates).length<=50,'Use at most 50 station rates per plan.').default({}),
 });
 export type SmartStopInput = z.infer<typeof smartStopSchema>;
 export type RoadLegs = { toMiles: number; toMinutes: number; onwardMiles: number; onwardMinutes: number; snapMeters: number };
