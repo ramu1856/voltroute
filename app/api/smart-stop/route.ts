@@ -138,7 +138,8 @@ export async function POST(request:Request){
     if(!ranked.ranked.length)return respond();
     const backed=assignBackups(ranked.ranked,shortlist,matrix.data.connections,input,reports,now);
     if(backed.excluded)result.excluded.backup=backed.excluded;
-    const noBackup=()=>{result.state='no-backup-confirmed';result.message='No-Stranding Mode could not confirm a separate, reachable backup with listed public access and hours covering arrival. No charging stop is recommended. Review your range, reserve and failure allowance, or check the operator directly.';};
+    const fallbackCandidates=ranked.ranked.slice(0,3);
+    const noBackup=()=>{result.state='no-backup-confirmed';result.candidates=fallbackCandidates;result.message='No-Stranding Mode could not confirm a separate reachable backup with listed public access and arrival hours. Turn off No-Stranding Mode to view the best available stop without backup, or keep strict mode and review your route assumptions.';};
     if(!backed.candidates.length){noBackup();return respond();}
     const preferred=preferStops(backed.candidates,input,Date.now());result.preferenceSummary=preferred.summary;
     result.candidates=backed.candidates.slice(0,3);

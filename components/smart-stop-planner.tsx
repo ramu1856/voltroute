@@ -21,14 +21,17 @@ const exclusionLabels:Record<string,string>={connector:'Connector does not match
 export function SmartStopPlanner({origin,destination,profile,battery,now,reportsVersion,enteredRates,accessToken,onResult,onClear,onView}:Props){
   const [reserve,setReserve]=useState('15'),[detour,setDetour]=useState('20'),[capacity,setCapacity]=useState(''),[maxKW,setMaxKW]=useState('');
   const [noStranding,setNoStranding]=useState(true),[failureAllowance,setFailureAllowance]=useState('3'),[failureDelay,setFailureDelay]=useState('10');
+  const [retryWithoutBackup,setRetryWithoutBackup]=useState(false);
   const [preference,setPreference]=useState<RoutePreference>('balanced');
   const [result,setResult]=useState<SmartStopResult|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const request=useRef<AbortController|null>(null),clear=useRef(onClear);
+  const recalculate=useRef<() => void>(()=>undefined);
   useEffect(()=>{clear.current=onClear;},[onClear]);
   useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){setCapacity('');setMaxKW('');}});return()=>{cancelled=true;};},[profile.name,profile.connector]);
   const input={origin,destination,profile,battery,reserve:Number(reserve),maxDetourMinutes:Number(detour),batteryCapacity:capacity.trim()===''?null:Number(capacity),vehicleMaxKW:maxKW.trim()===''?null:Number(maxKW),noStranding,failureAllowance:Number(failureAllowance),failureDelayMinutes:failureDelay.trim()===''?NaN:Number(failureDelay),preference,enteredRates:Object.fromEntries(Object.entries(enteredRates).filter(([,rate])=>rate.trim()!=='').sort(([a],[b])=>a.localeCompare(b)))};
   const inputKey=JSON.stringify(input),valid=smartStopSchema.safeParse(input).success;
   useEffect(()=>{request.current?.abort();let cancelled=false;queueMicrotask(()=>{if(!cancelled){setResult(null);setBusy(false);setError('');clear.current();}});return()=>{cancelled=true;};},[inputKey,reportsVersion]);
+  useEffect(()=>{if(!retryWithoutBackup||noStranding)return;setRetryWithoutBackup(false);recalculate.current();},[retryWithoutBackup,noStranding]);
   useEffect(()=>()=>request.current?.abort(),[]);
   async function calculate(){
     if(!valid)return;
@@ -43,6 +46,7 @@ export function SmartStopPlanner({origin,destination,profile,battery,now,reports
     }catch(error){if(!controller.signal.aborted)setError((error as Error).message);}
     finally{if(!controller.signal.aborted)setBusy(false);}
   }
+  recalculate.current=()=>{void calculate();};
   const currentTime=now??0;
   const selected=result?.selected;
   const backup=selected?.backup;
@@ -99,7 +103,7 @@ export function SmartStopPlanner({origin,destination,profile,battery,now,reports
         <section className="why-stop"><h4>Why this charger?</h4><ul>{selected.reasons.map(reason=><li key={reason}>{reason}</li>)}</ul><details><summary>How the choice was compared</summary><p>Lower combined planning points are preferred. These are ranking adjustments, not a safety or reliability score.</p><dl>{selected.adjustments.map(item=><div key={item.label}><dt>{item.label}</dt><dd>+{item.points.toFixed(1)}</dd></div>)}</dl><p>Extra driving, early charging, speed, availability evidence, hours and access contribute to the result. Price is shown in the charger details and is not used to claim the cheapest route.</p></details></section>
         <details className="smart-assumptions"><summary>Before using this stop</summary><ul>{selected.warnings.map(warning=><li key={warning}>{warning}</li>)}</ul></details>
         <p className="smart-note">{projectStopEnergy(selected,result.input).reachesDestination?'One planned charge can cover the remaining route if its target is reached. The backup is a separate failure scenario.':'Next stop only. Further charging stops and the trip after the backup have not been planned.'}</p>
-      </>:<div className={`smart-outcome ${result.state==='no-charge-needed'?'no-charge':'needs-review'}`}><strong>{result.state==='no-charge-needed'?'No charging stop needed under these assumptions':result.state==='reserve-too-low'?'Charge before driving':result.state==='no-backup-confirmed'?'No backup confirmed: suggestion withheld':result.state==='preference-unavailable'?'Comparison unavailable for this preference':'No suitable stop confirmed'}</strong><p>{result.message}</p>{result.state==='no-charge-needed'&&<p>Your entered range may change with weather, elevation, traffic and battery condition.</p>}</div>}
+      </>:<div className={`smart-outcome ${result.state==='no-charge-needed'?'no-charge':'needs-review'}`}><strong>{result.state==='no-charge-needed'?'No charging stop needed under these assumptions':result.state==='reserve-too-low'?'Charge before driving':result.state==='no-backup-confirmed'?'No backup confirmed in No-Stranding Mode':result.state==='preference-unavailable'?'Comparison unavailable for this preference':'No suitable stop confirmed'}</strong><p>{result.message}</p>{result.state==='no-charge-needed'&&<p>Your entered range may change with weather, elevation, traffic and battery condition.</p>}{result.state==='no-backup-confirmed'&&result.candidates.length>0&&<p>Closest checked candidates right now: {result.candidates.slice(0,3).map(candidate=>candidate.station.name).join(' • ')}.</p>}{result.state==='no-backup-confirmed'&&<div className="smart-actions"><Button type="button" className="full" disabled={busy} onClick={()=>{if(noStranding){setRetryWithoutBackup(true);setNoStranding(false);}else{void calculate();}}}><ArrowRight/>Allow suggestion without backup</Button></div>}</div>}
       {result.itinerary&&result.itinerary.status!=='unavailable'&&<details className="smart-coverage"><summary>Full trip itinerary (beta)</summary>
         <p>{result.itinerary.status==='complete'?`Planned ${result.itinerary.stops.length} charging stop${result.itinerary.stops.length===1?'':'s'} to cover this trip.`:`Partial chain with ${result.itinerary.stops.length} stop${result.itinerary.stops.length===1?'':'s'} identified.`}</p>
         <p>{result.itinerary.totalDriveMiles.toFixed(1)} road miles covered in the current chain. {result.itinerary.remainingMiles>0.01?`${result.itinerary.remainingMiles.toFixed(1)} miles still need additional validated stops.`:'Destination is covered in the current chain.'}</p>
