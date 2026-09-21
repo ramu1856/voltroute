@@ -273,3 +273,12 @@
 
 .vr-footer p{margin:0}.vr-footer nav{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px}.vr-footer nav a{text-decoration:underline;text-underline-offset:3px}
 .legal-page{min-height:100vh;background:#0c1b13;color:#eaf4ec;padding:48px 20px}.legal-shell{width:min(820px,100%);margin:0 auto}.legal-shell>a{color:#b9efc4}.legal-shell h1{font-size:clamp(2rem,5vw,3rem);margin:28px 0 12px;letter-spacing:-.03em}.legal-shell h2{font-size:1.2rem;margin:30px 0 8px}.legal-shell p{color:#bfd0c3;line-height:1.75;font-size:1rem}.legal-shell strong{color:#eff8f1}
+
+/* Clear live-map heads-up controls for faster navigation. */
+.map-hud{position:absolute;left:12px;top:12px;z-index:405;display:grid;gap:5px;padding:9px 10px;border:1px solid #4a6555;border-radius:10px;background:rgba(9,24,17,.9);color:#e7f5eb;font-size:12px;max-width:320px;backdrop-filter:blur(4px)}
+.map-hud-live{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:#bdf3c9}
+.map-hud-live:before{content:"";width:8px;height:8px;border-radius:999px;background:#59de7d;box-shadow:0 0 0 4px rgba(89,222,125,.18)}
+.map-hud-actions{display:flex;flex-wrap:wrap;gap:6px}
+.map-hud-actions button{min-height:32px;padding:5px 10px;border:1px solid #5b7a67;border-radius:999px;background:#173224;color:#e6f3e8;font-size:12px;cursor:pointer}
+.map-hud-actions button:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:720px){.map-hud{left:8px;right:8px;max-width:none}}
