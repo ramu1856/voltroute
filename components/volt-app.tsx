@@ -20,6 +20,7 @@ import { assessTrip } from '@/lib/trip-assessment';
 import { AccountAuth } from './account-auth';
 import { supabaseBrowser } from '@/lib/supabase-client';
 import { startGoogleOAuthSignIn } from '@/lib/google-oauth';
+import { WORKER_SITE_ORIGIN } from '@/lib/site-config';
 import type { DirectorySnapshot } from '@/lib/directory-cache';
 import { evaluateAvailability, evaluatePrice, evidenceTime, type OperatorObservation } from '@/lib/station-evidence';
 import { evaluateStationHours, matchesHoursFilter } from '@/lib/opening-hours';
@@ -34,6 +35,10 @@ const ChargingBreakPlanner = dynamic(() => import('./charging-break-planner').th
 const ChargerHistory = dynamic(() => import('./charger-history').then(module => module.ChargerHistory));
 const ExpectedWait = dynamic(() => import('./expected-wait').then(module => module.ExpectedWait));
 const ChargeSessionAssistant = dynamic(() => import('./charge-session-assistant').then(module => module.ChargeSessionAssistant));
+const WORKER_ABOUT_URL=`${WORKER_SITE_ORIGIN}/about`;
+const WORKER_DATA_SOURCES_URL=`${WORKER_SITE_ORIGIN}/data-sources`;
+const WORKER_PRIVACY_URL=`${WORKER_SITE_ORIGIN}/privacy`;
+const WORKER_TERMS_URL=`${WORKER_SITE_ORIGIN}/terms`;
 type DriverReport={sourceId:string;stationName:string;status:'working'|'busy'|'broken';note:string;reportedAt?:number};
 type Saved = {id:string;kind:'profile'|'station'|'trip'|'report';payload:Profile | (Point&{sourceId:string}) | TripInput | DriverReport;updated:number};
 async function api<T>(path:string,init?:RequestInit,accessToken?:string):Promise<T>{const headers=new Headers(init?.headers);if(accessToken)headers.set('Authorization',`Bearer ${accessToken}`);const response=await fetch(path,{...init,headers});const data=await response.json() as T & {error?:string};if(!response.ok)throw new Error(data.error || 'Something went wrong. Please try again.');return data;}
@@ -355,7 +360,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
       <li><strong>Trip Safety Score + Risk Map:</strong> See where confidence drops along your route.</li>
       <li><strong>Price and wait transparency:</strong> Keep unknown pricing or queue data explicit instead of hidden assumptions.</li>
      </ul>
-     <div className="mt-3 grid gap-2"><Button type="button" onClick={()=>setWorkspaceTab('trip')}>Start Smart Stop planning</Button><a className="text-[0.85rem] text-[#b8f5c5]" href="/about">See full product comparison ↗</a></div>
+     <div className="mt-3 grid gap-2"><Button type="button" onClick={()=>setWorkspaceTab('trip')}>Start Smart Stop planning</Button><a className="text-[0.85rem] text-[#b8f5c5]" href={WORKER_ABOUT_URL}>See full product comparison ↗</a></div>
     </section>
     <section className="comparison-snapshot" aria-label="VoltRoute compared with typical EV tools">
      <div className="comparison-head">
@@ -450,6 +455,6 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
      {!amenitiesLoading&&!amenityError&&<Tabs defaultValue="food"><TabsList className="vr-tabs"><TabsTrigger value="food">Food ({restaurantCount})</TabsTrigger><TabsTrigger value="restroom">Restrooms ({restroomCount})</TabsTrigger></TabsList>{(['food','restroom'] as const).map(kind=><TabsContent key={kind} value={kind}>{!amenities.some(a=>a.kind===kind)&&<p className="muted-small">No {kind==='food'?'food places':'restrooms'} mapped within ½ mile. This means unknown, not unavailable.</p>}{amenities.filter(a=>a.kind===kind).map(a=><article className="amenity-card" key={a.id}><div className="amenity-heading">{kind==='food'?<Utensils size={18}/>:<Toilet size={18}/>}<h3>{a.name}</h3><strong>{a.distance.toFixed(2)} mi</strong></div><p>{a.hours}</p><p>Access: {a.access}{kind==='restroom'?` · Fee: ${a.fee}`:''}</p>{kind==='restroom'&&<p>Wheelchair access: {a.wheelchair}</p>}<p className="muted-small">Open now: unverified</p><div className="amenity-links"><a href={directions(a,true)} target="_blank" rel="noreferrer">Walking directions ↗</a><a href={a.sourceUrl} target="_blank" rel="noreferrer">Source ↗</a></div></article>)}</TabsContent>)}</Tabs>}
     </section><div className="source-note"><a href={selected.sourceUrl} target="_blank" rel="noreferrer">View station source ↗</a>{selected.website&&<a href={selected.website} target="_blank" rel="noreferrer">Operator website ↗</a>}<p>{selected.updated?`Map record edited ${new Date(selected.updated).toLocaleDateString()}`:'Record edit date not listed'}. This is not the last successful charge.</p></div>
    </>:<div className="detail-empty"><MapPin/><h2>Select a charger</h2><p>See its mapped details, nearby food and restrooms.</p></div>}</aside>
-  </div><footer className="vr-footer"><p>Map and place data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors (ODbL)</a>. Place search: Photon. Road routing: OSRM. Live charging availability may use TomTom when a reliable station match is available. Community services have incomplete coverage and no availability guarantee. Do not rely on this beta for emergency charging.</p><nav aria-label="VoltRoutes legal and information"><a href="/about">About</a><a href="/data-sources">Data Sources</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav></footer>
+  </div><footer className="vr-footer"><p>Map and place data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors (ODbL)</a>. Place search: Photon. Road routing: OSRM. Live charging availability may use TomTom when a reliable station match is available. Community services have incomplete coverage and no availability guarantee. Do not rely on this beta for emergency charging.</p><nav aria-label="VoltRoutes legal and information"><a href={WORKER_ABOUT_URL}>About</a><a href={WORKER_DATA_SOURCES_URL}>Data Sources</a><a href={WORKER_PRIVACY_URL}>Privacy</a><a href={WORKER_TERMS_URL}>Terms</a></nav></footer>
  </main>;
 }
