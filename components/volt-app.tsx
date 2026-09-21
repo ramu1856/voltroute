@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { Zap, LocateFixed, Search, Navigation, Utensils, Toilet, Bookmark, Route, Car, ArrowRight, MapPin, X, AlertTriangle, Clock3, CheckCircle2, Link2, ArrowUpDown, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -329,7 +328,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
   return()=>lifecycle.abort();
  },[]);
  return <main className="vr-app"><Toaster richColors position="bottom-center"/><AccountAuth open={showAuth} onClose={()=>setShowAuth(false)} supabaseUrl={supabaseUrl} supabaseKey={supabaseKey}/>
- <header className="topbar"><Link href="/" className="brand"><span className="brand-mark"><Zap/></span>VoltRoute <small className="beta">BETA</small></Link><div className="account-nav">{signedIn?<><span>{account||session?.user.email||session?.user.phone||'Signed in'}</span><button type="button" onClick={()=>void supabaseBrowser({url:supabaseUrl,key:supabaseKey}).auth.signOut()}>Sign out</button></>:<button type="button" disabled={!authReady} onClick={()=>void requestGoogleSignIn()}>{authReady?'Continue with Google':'Checking account…'}</button>}</div></header>
+ <header className="topbar"><a href="/" className="brand"><span className="brand-mark"><Zap/></span>VoltRoute <small className="beta">BETA</small></a><div className="account-nav">{signedIn?<><span>{account||session?.user.email||session?.user.phone||'Signed in'}</span><button type="button" onClick={()=>void supabaseBrowser({url:supabaseUrl,key:supabaseKey}).auth.signOut()}>Sign out</button></>:<button type="button" disabled={!authReady} onClick={()=>void requestGoogleSignIn()}>{authReady?'Continue with Google':'Checking account…'}</button>}</div></header>
   <div className="data-banner"><span>{loading?'Loading directory…':error?'Directory search unavailable':directoryNotice?'Saved directory listings':fetchedAt?'Community directory loaded':'Community station directory'}</span> Live availability is checked through TomTom when a matching station and operator feed are available. Otherwise status stays unconfirmed.</div>
   <nav className="mobile-jumps" aria-label="Charging page sections"><a href="#charger-search">Search & vehicle</a><a href="#charger-map">Map & results</a><a href="#charging-stop">Charging stop</a></nav>
   <details className="quick-guide"><summary>New to VoltRoute? Start here</summary>
@@ -355,7 +354,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
       <li><strong>Trip Safety Score + Risk Map:</strong> See where confidence drops along your route.</li>
       <li><strong>Price and wait transparency:</strong> Keep unknown pricing or queue data explicit instead of hidden assumptions.</li>
      </ul>
-     <div className="mt-3 grid gap-2"><Button type="button" onClick={()=>setWorkspaceTab('trip')}>Start Smart Stop planning</Button><Link className="text-[0.85rem] text-[#b8f5c5]" href="/about">See full product comparison ↗</Link></div>
+     <div className="mt-3 grid gap-2"><Button type="button" onClick={()=>setWorkspaceTab('trip')}>Start Smart Stop planning</Button><a className="text-[0.85rem] text-[#b8f5c5]" href="/about">See full product comparison ↗</a></div>
     </section>
     <section className="comparison-snapshot" aria-label="VoltRoute compared with typical EV tools">
      <div className="comparison-head">
@@ -450,6 +449,6 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
      {!amenitiesLoading&&!amenityError&&<Tabs defaultValue="food"><TabsList className="vr-tabs"><TabsTrigger value="food">Food ({restaurantCount})</TabsTrigger><TabsTrigger value="restroom">Restrooms ({restroomCount})</TabsTrigger></TabsList>{(['food','restroom'] as const).map(kind=><TabsContent key={kind} value={kind}>{!amenities.some(a=>a.kind===kind)&&<p className="muted-small">No {kind==='food'?'food places':'restrooms'} mapped within ½ mile. This means unknown, not unavailable.</p>}{amenities.filter(a=>a.kind===kind).map(a=><article className="amenity-card" key={a.id}><div className="amenity-heading">{kind==='food'?<Utensils size={18}/>:<Toilet size={18}/>}<h3>{a.name}</h3><strong>{a.distance.toFixed(2)} mi</strong></div><p>{a.hours}</p><p>Access: {a.access}{kind==='restroom'?` · Fee: ${a.fee}`:''}</p>{kind==='restroom'&&<p>Wheelchair access: {a.wheelchair}</p>}<p className="muted-small">Open now: unverified</p><div className="amenity-links"><a href={directions(a,true)} target="_blank" rel="noreferrer">Walking directions ↗</a><a href={a.sourceUrl} target="_blank" rel="noreferrer">Source ↗</a></div></article>)}</TabsContent>)}</Tabs>}
     </section><div className="source-note"><a href={selected.sourceUrl} target="_blank" rel="noreferrer">View station source ↗</a>{selected.website&&<a href={selected.website} target="_blank" rel="noreferrer">Operator website ↗</a>}<p>{selected.updated?`Map record edited ${new Date(selected.updated).toLocaleDateString()}`:'Record edit date not listed'}. This is not the last successful charge.</p></div>
    </>:<div className="detail-empty"><MapPin/><h2>Select a charger</h2><p>See its mapped details, nearby food and restrooms.</p></div>}</aside>
-  </div><footer className="vr-footer"><p>Map and place data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors (ODbL)</a>. Place search: Photon. Road routing: OSRM. Live charging availability may use TomTom when a reliable station match is available. Community services have incomplete coverage and no availability guarantee. Do not rely on this beta for emergency charging.</p><nav aria-label="VoltRoutes legal and information"><Link href="/about">About</Link><Link href="/data-sources">Data Sources</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link></nav></footer>
+  </div><footer className="vr-footer"><p>Map and place data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors (ODbL)</a>. Place search: Photon. Road routing: OSRM. Live charging availability may use TomTom when a reliable station match is available. Community services have incomplete coverage and no availability guarantee. Do not rely on this beta for emergency charging.</p><nav aria-label="VoltRoutes legal and information"><a href="/about">About</a><a href="/data-sources">Data Sources</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav></footer>
  </main>;
 }
