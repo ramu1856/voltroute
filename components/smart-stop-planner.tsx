@@ -31,7 +31,8 @@ export function SmartStopPlanner({origin,destination,profile,battery,now,reports
   useEffect(()=>{request.current?.abort();let cancelled=false;queueMicrotask(()=>{if(!cancelled){setResult(null);setBusy(false);setError('');clear.current();}});return()=>{cancelled=true;};},[inputKey,reportsVersion]);
   useEffect(()=>()=>request.current?.abort(),[]);
   async function calculate(overrideNoStranding?:boolean){
-    const payload={...input,noStranding:overrideNoStranding??input.noStranding};
+    const forcedNoStranding=typeof overrideNoStranding==='boolean'?overrideNoStranding:undefined;
+    const payload={...input,noStranding:forcedNoStranding??input.noStranding};
     if(!smartStopSchema.safeParse(payload).success)return;
     request.current?.abort();const controller=new AbortController();request.current=controller;
     setBusy(true);setResult(null);setError('');onClear();
@@ -63,7 +64,7 @@ export function SmartStopPlanner({origin,destination,profile,battery,now,reports
     <div className="backup-settings"><div className="backup-toggle"><label htmlFor="no-stranding"><ShieldCheck size={18}/>No-Stranding Mode</label><Switch id="no-stranding" checked={noStranding} onCheckedChange={setNoStranding}/></div><p className="smart-note">{noStranding?'Require a separate backup reachable without charging at the main stop, with listed public access and hours covering arrival.':'Off: a main stop may be suggested without a confirmed backup.'} This is a planning check; charger operation is not guaranteed.</p><details><summary>Plan for a failed charging attempt</summary><div className="smart-inputs"><label>Extra battery allowance (%)<input type="number" min="1" max="10" step="0.5" value={failureAllowance} onChange={e=>setFailureAllowance(e.target.value)}/></label><label>Time lost at main (min)<input type="number" min="0" max="60" value={failureDelay} onChange={e=>setFailureDelay(e.target.value)}/></label></div><p>Deduct {failureAllowance||'—'} percentage points in addition to driving energy, while keeping your {reserve||'—'}% reserve at the backup. Add {failureDelay||'—'} minutes before checking its arrival hours. Adjust these assumptions for your trip.</p></details></div>
     <details className="smart-vehicle-details" open={preference==='cheapest'||preference==='fastest'}><summary>Vehicle charging inputs</summary><p>Capacity is needed for trip energy cost. Capacity and your vehicle power limit are needed for charging time. Leave unknown values blank.</p><label>Usable battery capacity (kWh)<input type="number" min="10" max="250" step="0.1" value={capacity} placeholder="Unknown" onChange={e=>setCapacity(e.target.value)}/></label><label>Vehicle charging limit (kW)<input type="number" min="1" max="500" step="0.1" value={maxKW} placeholder="Unknown" onChange={e=>setMaxKW(e.target.value)}/></label></details>
     {!valid&&<p className="error-text">Use a 10–30% reserve, 5–60 minute detour limit, 1–10% failure allowance, 0–60 minute delay and valid vehicle inputs.</p>}
-    <Button type="button" className="full smart-submit" disabled={busy||!valid} onClick={calculate}><Route/>{busy?'Checking route & charging stops…':result?'Recalculate Smart Stop':'Find my next charging stop'}</Button>
+    <Button type="button" className="full smart-submit" disabled={busy||!valid} onClick={()=>void calculate()}><Route/>{busy?'Checking route & charging stops…':result?'Recalculate Smart Stop':'Find my next charging stop'}</Button>
     {busy&&<p className="smart-note" role="status">Checking main and backup road routes, battery reserve, access and arrival hours. This can take a little while.</p>}
     {error&&<p className="error-text" role="alert">{error}</p>}
     {result&&<div className="smart-result" aria-live="polite">
