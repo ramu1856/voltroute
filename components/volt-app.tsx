@@ -121,6 +121,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const [routeStationsBusy,setRouteStationsBusy]=useState(false),[routeStationsError,setRouteStationsError]=useState(''),[routeStationsMode,setRouteStationsMode]=useState(false);
  const [filter,setFilter]=useState(''),[fast,setFast]=useState(false),[match,setMatch]=useState(false),[freeOnly,setFreeOnly]=useState(false),[radius,setRadius]=useState('160934');
  const [road,setRoad]=useState<RoadRoute|null>(null),[selectedRoad,setSelectedRoad]=useState<RoadRoute|null>(null),[selectedRoadBusy,setSelectedRoadBusy]=useState(false),[routeBusy,setRouteBusy]=useState(false),[routeError,setRouteError]=useState(''),[tripSnapshot,setTripSnapshot]=useState<TripInput|null>(null),[mapRouteOverride,setMapRouteOverride]=useState<RoadRoute|null>(null);
+ const [expandedChargerId,setExpandedChargerId]=useState<string|null>(null),[startingNavigation,setStartingNavigation]=useState(false),[navigationTargetId,setNavigationTargetId]=useState<string|null>(null),[navigationStartedAt,setNavigationStartedAt]=useState<number|null>(null),[navigationDistanceMiles,setNavigationDistanceMiles]=useState<number|null>(null),[navigationEtaMinutes,setNavigationEtaMinutes]=useState<number|null>(null);
  const [smartPlan,setSmartPlan]=useState<SmartStopResult|null>(null);
  const [showRisk,setShowRisk]=useState(true),[focusedRisk,setFocusedRisk]=useState<string|null>(null);
  const [saving,setSaving]=useState(false),[amenityRetry,setAmenityRetry]=useState(0),[locating,setLocating]=useState(false);
@@ -169,6 +170,16 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const visible=useMemo(()=>stations.filter(s=>(!(openNow||allDay)||(hoursClock!==null&&matchesHoursFilter(stationHours.get(s.id)!,openNow,allDay)))&&(!fast||(s.power!==null&&s.power>=100))&&(!freeOnly||s.fee==='Listed as free')&&(!(match||emergency)||s.connectors.includes(profile.connector))&&`${s.name} ${s.network} ${s.address}`.toLowerCase().includes(filter.toLowerCase())).slice(0,emergency?12:250),[stations,fast,freeOnly,match,emergency,profile.connector,filter,openNow,allDay,stationHours,hoursClock]);
  const checkpoints=road&&tripSnapshot?chargingCheckpoints(road,tripSnapshot.profile,tripSnapshot.battery):[];
 const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const mid=road.coordinates[Math.floor(road.coordinates.length/2)];if(!mid)return null;const [lon,lat]=mid;return {lat,lon};},[road]);
+ const navigationTarget=navigationTargetId?stations.find(station=>station.id===navigationTargetId)||(selected?.id===navigationTargetId?selected:null):null;
+ function portsLabel(info:ReturnType<typeof stationAvailability.get>){
+  if(!info)return 'Ports: unconfirmed';
+  if(info.availablePorts!==null&&info.totalPorts!==null)return `Ports: ${info.availablePorts}/${info.totalPorts} free`;
+  return 'Ports: unconfirmed';
+ }
+ function liveStatusLabel(info:ReturnType<typeof stationAvailability.get>){
+  if(!info)return 'Live status: unconfirmed';
+  return `Live status: ${info.label}`;
+ }
  async function loadAccount(){if(!accessToken)return [] as Saved[];try{const r=await api<{user:{name:string};items:Saved[]}>('/api/account',undefined,accessToken);setAccount(r.user.name);setSaved(r.items);setReports(Object.fromEntries(r.items.filter(i=>i.kind==='report').map(i=>[(i.payload as DriverReport).sourceId,{...i.payload as DriverReport,reportedAt:i.updated}])));setAccountError('');return r.items;}catch(e){setAccountError((e as Error).message);return [] as Saved[];}}
  async function loadStations(point:Point=origin,chosenRadius=radius){
   const cacheKey=`${point.lat.toFixed(4)}:${point.lon.toFixed(4)}:${chosenRadius}`;
@@ -208,10 +219,11 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
  },[selectedId,selectedLat,selectedLon,amenityRetry]);
  useEffect(()=>{const controller=new AbortController();void Promise.resolve().then(async()=>{if(!selectedId||selectedLat===undefined||selectedLon===undefined){setSelectedRoad(null);setSelectedRoadBusy(false);return;}setSelectedRoad(null);setSelectedRoadBusy(true);try{const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${origin.lat}&lon=${origin.lon}&toLat=${selectedLat}&toLon=${selectedLon}`,{signal:controller.signal});if(!controller.signal.aborted)setSelectedRoad({...r.data,fetchedAt:r.fetchedAt});}catch{if(!controller.signal.aborted)setSelectedRoad(null);}finally{if(!controller.signal.aborted)setSelectedRoadBusy(false);}});return()=>controller.abort();},[selectedId,selectedLat,selectedLon,origin.lat,origin.lon]);
 
- useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.current++;setRoad(null);setSmartPlan(null);setTripSnapshot(null);setMapRouteOverride(null);setRouteError('');setRouteBusy(false);setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);routeStationsSnapshot.current=null;}});return()=>{cancelled=true;};},[origin,destination,profile,battery]);
+ useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.current++;setRoad(null);setSmartPlan(null);setTripSnapshot(null);setMapRouteOverride(null);setNavigationTargetId(null);setNavigationStartedAt(null);setNavigationDistanceMiles(null);setNavigationEtaMinutes(null);setRouteError('');setRouteBusy(false);setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);routeStationsSnapshot.current=null;}});return()=>{cancelled=true;};},[origin,destination,profile,battery]);
  useEffect(()=>{if(!smartPlan||!isSmartStopExpired(smartPlan,currentTime))return;let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSmartPlan(null);});return()=>{cancelled=true;};},[smartPlan,currentTime]);
  useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSmartPlan(null);});return()=>{cancelled=true;};},[reports,enteredRates]);
  useEffect(()=>{if(!((selected&&!visible.some(s=>s.id===selected.id))||(!selected&&visible.length)))return;let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSelected(visible[0]||null);});return()=>{cancelled=true;};},[visible,selected]);
+ useEffect(()=>{if(!selected)return;let cancelled=false;queueMicrotask(()=>{if(!cancelled)setExpandedChargerId(selected.id);});return()=>{cancelled=true;};},[selected]);
  function pickOrigin(point:Point){setOrigin(point);void loadStations(point);}
  async function locate(){if(!navigator.geolocation){toast.error('Your browser does not support location. Search a city instead.');return;}setLocating(true);navigator.geolocation.getCurrentPosition(p=>{const point={lat:Number(p.coords.latitude.toFixed(4)),lon:Number(p.coords.longitude.toFixed(4)),label:'Current location'};pickOrigin(point);setLocating(false);},()=>{setLocating(false);toast.error('Location was not shared. You can search a city instead.');},{timeout:12000,maximumAge:60000});}
  async function requestGoogleSignIn(){
@@ -237,26 +249,62 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
    toast.error('Could not copy link automatically. Please retry and allow clipboard access.');
   }
  }
- function showRouteDirectionsOnMap(routeToShow:RoadRoute,message:string){
+ function showRouteDirectionsOnMap(routeToShow:RoadRoute,message?:string){
   setMapRouteOverride(routeToShow);
   setFocusedRisk(null);
   document.querySelector('#charger-map')?.scrollIntoView({behavior:'smooth',block:'start'});
-  toast.success(message);
+  if(message)toast.success(message);
  }
- async function showDirectionsToSelected(){
-  if(!selected)return;
-  if(selectedRoad){showRouteDirectionsOnMap(selectedRoad,'Directions are now shown on the map.');return;}
+ async function loadRoadToStation(station:Station){
+  if(selectedRoad&&selected?.id===station.id)return selectedRoad;
+  const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${origin.lat}&lon=${origin.lon}&toLat=${station.lat}&toLon=${station.lon}`);
+  const routeToStation={...r.data,fetchedAt:r.fetchedAt};
+  setSelectedRoad(routeToStation);
+  return routeToStation;
+ }
+ async function showDirectionsToStation(station:Station){
+  setSelected(station);
+  setExpandedChargerId(station.id);
   setSelectedRoadBusy(true);
   try{
-   const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${origin.lat}&lon=${origin.lon}&toLat=${selected.lat}&toLon=${selected.lon}`);
-   const routeToSelected={...r.data,fetchedAt:r.fetchedAt};
-   setSelectedRoad(routeToSelected);
-   showRouteDirectionsOnMap(routeToSelected,'Directions are now shown on the map.');
+   const routeToStation=await loadRoadToStation(station);
+   showRouteDirectionsOnMap(routeToStation,'Directions are now shown on the map.');
   }catch(e){
    toast.error((e as Error).message||'Directions could not be loaded right now.');
   }finally{
    setSelectedRoadBusy(false);
   }
+ }
+ async function showDirectionsToSelected(){
+  if(!selected)return;
+  await showDirectionsToStation(selected);
+ }
+ async function startNavigationToStation(station:Station){
+  setSelected(station);
+  setExpandedChargerId(station.id);
+  setNavigationTargetId(station.id);
+  setStartingNavigation(true);
+  try{
+   const routeToStation=await loadRoadToStation(station);
+   showRouteDirectionsOnMap(routeToStation);
+   setNavigationTargetId(station.id);
+   setNavigationStartedAt(Date.now());
+   setNavigationDistanceMiles(routeToStation.miles);
+   setNavigationEtaMinutes(Math.round(routeToStation.minutes));
+   toast.success('VoltRoute navigation mode started. Follow the highlighted map route.');
+  }catch(e){
+   toast.error((e as Error).message||'Navigation could not be started right now.');
+   setNavigationTargetId(null);
+  }finally{
+   setStartingNavigation(false);
+  }
+ }
+ function stopNavigationMode(){
+  setNavigationTargetId(null);
+  setNavigationStartedAt(null);
+  setNavigationDistanceMiles(null);
+  setNavigationEtaMinutes(null);
+  toast.info('Navigation mode stopped.');
  }
  function swapTripEndpoints(){
   const nextOrigin=destination;
@@ -466,6 +514,7 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
     <ChargeSessionAssistant station={selected} vehicleName={profile.name} enteredRate={selected?enteredRates[selected.id]||'':''}/>
     <ChargerMap availability={stationAvailability} center={center} stations={visible} selected={selected} amenities={amenities} route={mapRouteOverride||smartPlan?.route||road} backupRoute={smartPlan?.selected?.backup?.route||null} mainId={smartPlan?.selected?.station.id} backupId={smartPlan?.selected?.backup?.station.id} riskSections={showRisk?tripAssessment?.sections||[]:[]} focusedRiskId={focusedRisk} onRiskFocus={id=>setFocusedRisk(current=>current===id?null:id)} onSelect={setSelected} onSearch={p=>loadStations(p)} fetchedAt={fetchedAt}/>
     <div className="map-key"><span className="cluster-key">Numbered groups: mapped stations. Tap to zoom.</span><span className="unknown-color">● Unknown status</span><span className="recent-color">● Recent observation</span><span>● Live operator status</span><span className="food-color">● Food</span><span className="restroom-color">● Restrooms</span><span className="shopping-color">● Shopping</span><span className="route-color">● Search center{!tripAssessment||!showRisk?' / road route':''}</span>{smartPlan?.selected?.backup?.route&&<span className="backup-color">Dashed path: main → backup</span>}</div>
+    {navigationTarget&&<section className="navigation-mode-banner" role="status"><div><p className="eyebrow">VoltRoute navigation mode</p><h3>{navigationTarget.name}</h3><p>{navigationDistanceMiles!==null?`${navigationDistanceMiles.toFixed(1)} road miles`:''}{navigationDistanceMiles!==null&&navigationEtaMinutes!==null?' · ':''}{navigationEtaMinutes!==null?`~${navigationEtaMinutes} min`:''}{navigationStartedAt?` · started ${evidenceTime(navigationStartedAt)}`:''}</p></div><Button variant="outline" type="button" onClick={stopNavigationMode}>Stop</Button></section>}
     {smartPlan&&<TripIntelligencePanel result={smartPlan} assessment={tripAssessment} now={currentTime}/>} 
     {tripAssessment&&<TripAssessmentPanel assessment={tripAssessment} showRisk={showRisk} focusedId={focusedRisk} onShowRisk={show=>{setShowRisk(show);if(!show)setFocusedRisk(null);}} onFocus={setFocusedRisk}/>} 
     {smartPlan&&<TripCostPanel result={smartPlan} now={currentTime}/>} 
@@ -476,7 +525,7 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
      {directoryNotice&&!loading&&<div className="directory-notice" role="status"><Clock3 aria-hidden="true"/><p>{directoryNotice}</p><Button variant="outline" onClick={()=>loadStations(center,searchedRadius)}>Refresh listings</Button></div>}
      {error&&<div className="error-box" role="alert"><AlertTriangle aria-hidden="true"/><p>{error}</p><Button variant="outline" onClick={()=>loadStations(center,searchedRadius)}>Retry charger search</Button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`EV charging stations near ${center.lat},${center.lon}`)}`} target="_blank" rel="noreferrer">Search this area on Google Maps ↗</a></div>}
      {!loading&&!error&&fetchedAt&&!visible.length&&<div className="empty-results">No mapped chargers match this search. Try a larger radius, another place or turn off filters. Missing map data does not mean there are no chargers.</div>}
-     <div className="charger-results">{visible.map(s=><button className={`charger-row ${selected?.id===s.id?'is-selected':''}`} onClick={()=>setSelected(s)} key={s.id}><span className="charger-symbol"><Zap size={20}/></span><span className="charger-info"><small>{s.network}</small><strong>{s.name}</strong><span>{s.connectors.join(' · ')||'Connectors not listed'}</span><small>{s.access==='customers'?'Customer access':s.access==='Access not listed'?'Public access not confirmed':s.access}</small><small className={`evidence-badge evidence-${stationAvailability.get(s.id)?.freshness||'unknown'}`}>Status: {stationAvailability.get(s.id)?.freshness==='unknown'?'Unconfirmed':stationAvailability.get(s.id)?.label||'Unconfirmed'}</small><small className="list-price">{stationPrices.get(s.id)?.rate===0&&stationPrices.get(s.id)?.source==='OpenStreetMap listing'?'Listed as free · Community listing':stationPrices.get(s.id)?.rate!==null&&stationPrices.get(s.id)?.rate!==undefined?`$${stationPrices.get(s.id)!.rate!.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4})}/kWh · ${stationPrices.get(s.id)!.label}`:'Price unavailable'}</small></span><span className="charger-numbers"><strong>{s.distance.toFixed(1)} mi</strong><span>{s.power?`${s.power} kW`:'Power not published'}</span><small className={`hours-badge hours-${stationHours.get(s.id)?.state||'unknown'}`}>{stationHours.get(s.id)?.label||'Checking hours…'}</small></span></button>)}</div>
+     <div className="charger-results">{visible.map(s=>{const info=stationAvailability.get(s.id);const expanded=expandedChargerId===s.id;const activeConnector=activeConnectorByCharger[s.id]||(s.connectors[0]||'Not listed');const connectorSpeed=s.connectorPower?.[activeConnector]??s.power;return <article className={`charger-row charger-card ${selected?.id===s.id?'is-selected':''} ${expanded?'is-expanded':''}`} key={s.id}><button type="button" className="charger-card-head" onClick={()=>{setSelected(s);setExpandedChargerId(s.id);}}><span className="charger-symbol"><Zap size={20}/></span><span className="charger-info"><small>{s.network}</small><strong>{s.name}</strong><span>{s.distance.toFixed(1)} mi · {portsLabel(info)}</span><small>{liveStatusLabel(info)}</small></span><span className="charger-numbers"><strong>{connectorSpeed?`${connectorSpeed} kW`:'Speed not listed'}</strong><span>{activeConnector}</span><small className={`hours-badge hours-${stationHours.get(s.id)?.state||'unknown'}`}>{stationHours.get(s.id)?.label||'Checking hours…'}</small></span></button>{expanded&&<div className="charger-card-body"><div className="charger-card-stats"><span><strong>Distance</strong><small>{s.distance.toFixed(1)} mi</small></span><span><strong>Available ports</strong><small>{portsLabel(info).replace('Ports: ','')}</small></span><span><strong>Connector type</strong><small>{activeConnector}</small></span><span><strong>Charging speed</strong><small>{connectorSpeed?`${connectorSpeed} kW`:'Not listed'}</small></span><span><strong>Live status</strong><small>{info?.label||'Unconfirmed'}</small></span></div><div className="charger-port-row">{(s.connectors.length?s.connectors:['Not listed']).map(connector=><button key={connector} type="button" className={`connector-chip ${activeConnector===connector?'is-active':''}`} onClick={()=>setActiveConnectorByCharger(current=>({...current,[s.id]:connector}))}>{connector}</button>)}</div><div className="charger-card-actions"><Button type="button" variant="outline" onClick={()=>void showDirectionsToStation(s)}><Navigation/>Get Directions</Button><Button type="button" disabled={startingNavigation} onClick={()=>void startNavigationToStation(s)}><Route/>{startingNavigation&&navigationTargetId===s.id?'Starting…':'Start'}</Button></div></div>}</article>;})}</div>
     </section>
    </section>
    <aside id="charging-stop" tabIndex={-1} className="vr-details">{selected?<><p className="eyebrow">Charging stop</p><h2>{selected.name}</h2><p className="muted-small">{selected.address||`${selected.lat.toFixed(4)}, ${selected.lon.toFixed(4)}`}</p><StationEvidence station={selected} info={stationAvailability.get(selected.id)!} fetchedAt={fetchedAt}/><section className="live-refresh"><div><strong>Live operator check</strong><p>{liveLoading?'Checking TomTom availability…':liveError?liveError:stationAvailability.get(selected.id)?.freshness==='live'?stationAvailability.get(selected.id)?.label:'No live port count confirmed for this charger.'}</p></div><Button type="button" variant="outline" disabled={liveLoading} onClick={()=>void refreshLive(selected)}>{liveLoading?'Checking…':'Refresh live status'}</Button></section><div className={`compatibility-alert ${connectorMatch?'is-compatible':'is-incompatible'}`}>{connectorMatch?<CheckCircle2/>:<AlertTriangle/>}<div><strong>{connectorMatch?'Connector type matches':'Connector match unconfirmed'}</strong><span>Your {profile.name} uses {profile.connector}. Station lists {selected.connectors.join(', ')||'no connector details'}. Check model-year, adapter and network access requirements.</span></div></div><dl className="station-facts"><div><dt>Driving distance</dt><dd>{selectedRoadBusy?'Calculating…':selectedRoad?`${selectedRoad.miles.toFixed(1)} mi · ${Math.round(selectedRoad.minutes)} min`:'Unavailable'}</dd></div><div><dt>Map distance</dt><dd>{selected.distance.toFixed(1)} mi straight-line</dd></div><div><dt>Power</dt><dd>{selected.power?`${selected.power} kW`:'Not published'}</dd></div><div><dt>Connectors</dt><dd>{selected.connectors.join(', ')||'Not published'}</dd></div><div><dt>Access</dt><dd>{selected.access==='Access not listed'?'Public access not confirmed':selected.access}</dd></div></dl><StationHours sourceUrl={selected.sourceUrl} hours={selected.hours} info={stationHours.get(selected.id)} checkedAt={hoursClock}/><StationPrice key={selected.id} station={selected} info={stationPrices.get(selected.id)!} range={profile.range} connector={profile.connector} enteredRate={enteredRates[selected.id]||''} onRateChange={value=>setEnteredRates(previous=>({...previous,[selected.id]:value}))}/>{signedIn?<section className="driver-report"><h3>Your station report</h3><p>{reports[selected.id]?`Your latest report: ${reports[selected.id].status} · ${evidenceTime(reports[selected.id].reportedAt)}`:'No report from you yet. Record the condition you observed at this station.'}</p><p className="muted-small">Saved privately to your account. Reports are recent for 24 hours and do not confirm a free port.</p><div><Button variant="outline" disabled={saving} onClick={()=>report('working')}>Working</Button><Button variant="outline" disabled={saving} onClick={()=>report('busy')}>Busy</Button><Button variant="outline" disabled={saving} onClick={()=>report('broken')}>Broken</Button></div></section>:<section className="account-prompt"><p>Sign in to save a private station report or share a community observation.</p><Button type="button" variant="outline" onClick={()=>void requestGoogleSignIn()}>Continue with Google</Button></section>}

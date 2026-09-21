@@ -296,3 +296,21 @@
 .charger-actions-highlight h3{margin:4px 0 12px;font-size:1rem;color:#eaf8ef}
 .charger-actions-grid{display:grid;gap:9px}
 .charger-actions-highlight .full{min-height:46px;font-weight:650;justify-content:flex-start}
+
+/* Route list cards that expand with in-app navigation actions. */
+.charger-card{padding:0;display:block;cursor:default}
+.charger-card-head{display:flex;align-items:center;gap:11px;border:0;background:transparent;color:inherit;width:100%;text-align:left;padding:14px;cursor:pointer}
+.charger-card-body{display:grid;gap:10px;padding:12px 14px 14px;border-top:1px solid #35513f}
+.charger-card-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.charger-card-stats span{display:grid;gap:2px;padding:8px;border:1px solid #3c5a45;border-radius:8px;background:#142a1f}
+.charger-card-stats strong{font-size:12px;color:#b9cfbf}
+.charger-card-stats small{font-size:13px;color:#e5f2e8;overflow-wrap:anywhere}
+.charger-port-row{display:flex;flex-wrap:wrap;gap:7px}
+.connector-chip{min-height:34px;padding:6px 10px;border:1px solid #4b6855;border-radius:999px;background:#13271d;color:#d6e4dc;font-size:12px;cursor:pointer}
+.connector-chip.is-active{border-color:#91f8a8;background:#224533;color:#f0fff4}
+.charger-card-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.charger-card-actions [data-slot=button]{min-height:42px}
+.navigation-mode-banner{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid #5c7a66;border-radius:10px;background:#173323;margin:10px 14px}
+.navigation-mode-banner h3{margin:2px 0 4px;font-size:1.02rem;color:#ebf8ef}
+.navigation-mode-banner p{margin:0;font-size:.83rem;line-height:1.5;color:#c2d4c8}
+@media(max-width:720px){.charger-card-stats,.charger-card-actions{grid-template-columns:1fr}}
