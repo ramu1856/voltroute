@@ -198,7 +198,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const requestId=useRef(0),routeId=useRef(0),liveId=useRef(0);
  const navigationWatchIdRef=useRef<number|null>(null);
  const lastNavigationSampleRef=useRef<{lat:number;lon:number;capturedAt:number}|null>(null);
- const selectedRoadStationIdRef=useRef<string|null>(null),selectedRoadSignatureRef=useRef<string|null>(null),directionsRequestIdRef=useRef(0),startNavigationRequestIdRef=useRef(0);
+ const selectedRoadStationIdRef=useRef<string|null>(null),selectedRoadSignatureRef=useRef<string|null>(null),routeActionRequestIdRef=useRef(0);
  const stationRequest=useRef<AbortController|null>(null),loadStationsRef=useRef(loadStations),loadAccountRef=useRef(loadAccount),selectedRef=useRef<Station|null>(null),refreshLiveRef=useRef<(station:Station)=>Promise<void>>(async()=>{});
  const stationSnapshotCache=useRef<Map<string,DirectorySnapshot<Station[]>>>(new Map());
  useEffect(()=>()=>stationRequest.current?.abort(),[]);
@@ -310,7 +310,7 @@ useEffect(()=>{const controller=new AbortController();void Promise.resolve().the
   return()=>{disposed=true;clearWatch();lastNavigationSampleRef.current=null;};
  },[navigationTargetId]);
 
-useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.current++;startNavigationRequestIdRef.current++;directionsRequestIdRef.current++;setRoad(null);setSmartPlan(null);setTripSnapshot(null);setRouteOnlyMode(false);setNavigationTargetId(null);setNavigationDistanceMiles(null);setNavigationEtaMinutes(null);setNavigationLocation(null);setNavigationLocationError('');setSwitchingRoute(false);setStartingNavigation(false);selectedRoadStationIdRef.current=null;selectedRoadSignatureRef.current=null;setRouteError('');setRouteBusy(false);setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);routeStationsSnapshot.current=null;}});return()=>{cancelled=true;};},[origin,destination,profile,battery]);
+useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.current++;routeActionRequestIdRef.current++;setRoad(null);setSmartPlan(null);setTripSnapshot(null);setRouteOnlyMode(false);setNavigationTargetId(null);setNavigationDistanceMiles(null);setNavigationEtaMinutes(null);setNavigationLocation(null);setNavigationLocationError('');setSwitchingRoute(false);setStartingNavigation(false);selectedRoadStationIdRef.current=null;selectedRoadSignatureRef.current=null;setRouteError('');setRouteBusy(false);setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);routeStationsSnapshot.current=null;}});return()=>{cancelled=true;};},[origin,destination,profile,battery]);
  useEffect(()=>{if(!smartPlan||!isSmartStopExpired(smartPlan,currentTime))return;let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSmartPlan(null);});return()=>{cancelled=true;};},[smartPlan,currentTime]);
  useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSmartPlan(null);});return()=>{cancelled=true;};},[reports,enteredRates]);
  useEffect(()=>{if(!((selected&&!visible.some(s=>s.id===selected.id))||(!selected&&visible.length)))return;let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSelected(visible[0]||null);});return()=>{cancelled=true;};},[visible,selected]);
@@ -378,8 +378,7 @@ async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean;p
   throw lastError||new Error('Route could not be loaded right now.');
  }
  async function showDirectionsToStation(station:Station){
-  const directionsRequestId=++directionsRequestIdRef.current;
-  startNavigationRequestIdRef.current++;
+  const routeActionId=++routeActionRequestIdRef.current;
   const wasNavigating=!!navigationTargetId;
   setSelected(station);
   setExpandedChargerId(station.id);
@@ -396,7 +395,7 @@ async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean;p
   setSelectedRoadBusy(true);
   try{
    const routeToStation=await loadRoadToStation(station,{forceFresh:true,preferLiveStart:wasNavigating});
-   if(directionsRequestId!==directionsRequestIdRef.current)return;
+   if(routeActionId!==routeActionRequestIdRef.current)return;
    showRouteDirectionsOnMap(routeToStation,'Directions are now shown on the map.');
    if(wasNavigating){
     setNavigationRoute(routeToStation);
@@ -405,9 +404,9 @@ async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean;p
     setNavigationEtaMinutes(Math.round(routeToStation.minutes));
    }
   }catch(e){
-   if(directionsRequestId===directionsRequestIdRef.current)toast.error((e as Error).message||'Directions could not be loaded right now.');
+   if(routeActionId===routeActionRequestIdRef.current)toast.error((e as Error).message||'Directions could not be loaded right now.');
   }finally{
-   if(directionsRequestId===directionsRequestIdRef.current){setSelectedRoadBusy(false);setSwitchingRoute(false);}
+   if(routeActionId===routeActionRequestIdRef.current){setSelectedRoadBusy(false);setSwitchingRoute(false);}
   }
  }
  async function showDirectionsToSelected(){
@@ -415,6 +414,7 @@ async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean;p
   await showDirectionsToStation(selected);
  }
  async function startTripNavigation(){
+  const routeActionId=++routeActionRequestIdRef.current;
   if(!tripSnapshot){toast.info('Calculate the route first to start navigation mode.');return;}
   setStartingNavigation(true);
   try{
@@ -423,8 +423,10 @@ async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean;p
     const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${tripSnapshot.origin.lat}&lon=${tripSnapshot.origin.lon}&toLat=${tripSnapshot.destination.lat}&toLon=${tripSnapshot.destination.lon}`);
     routeForNavigation={...r.data,fetchedAt:r.fetchedAt};
     if(!hasRenderableRoute(routeForNavigation))throw new Error('Navigation route could not be loaded. Please retry.');
+    if(routeActionId!==routeActionRequestIdRef.current)return;
     setRoad(routeForNavigation);
    }
+   if(routeActionId!==routeActionRequestIdRef.current)return;
    showRouteDirectionsOnMap(routeForNavigation);
    setNavigationRoute(routeForNavigation);
    setPinnedMapRoute(routeForNavigation);
@@ -433,13 +435,13 @@ async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean;p
    setNavigationEtaMinutes(Math.round(routeForNavigation.minutes));
    toast.success('VoltRoute navigation mode started for your destination route.');
   }catch(error){
-   toast.error(error instanceof Error?error.message:'Navigation route could not be loaded right now.');
+   if(routeActionId===routeActionRequestIdRef.current)toast.error(error instanceof Error?error.message:'Navigation route could not be loaded right now.');
   }finally{
-   setStartingNavigation(false);
+   if(routeActionId===routeActionRequestIdRef.current)setStartingNavigation(false);
   }
  }
  async function startNavigationToStation(station:Station){
-  const navigationRequestId=++startNavigationRequestIdRef.current;
+  const routeActionId=++routeActionRequestIdRef.current;
   setSelected(station);
   setExpandedChargerId(station.id);
   setNavigationTargetId(station.id);
@@ -455,7 +457,7 @@ async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean;p
   setStartingNavigation(true);
   try{
    const routeToStation=await loadRoadToStation(station,{forceFresh:true,preferLiveStart:true});
-   if(navigationRequestId!==startNavigationRequestIdRef.current)return;
+   if(routeActionId!==routeActionRequestIdRef.current)return;
    showRouteDirectionsOnMap(routeToStation);
    setNavigationRoute(routeToStation);
    setPinnedMapRoute(routeToStation);
@@ -464,20 +466,19 @@ async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean;p
    setNavigationEtaMinutes(Math.round(routeToStation.minutes));
    toast.success('VoltRoute navigation mode started. Follow the highlighted map route.');
   }catch(e){
-   if(navigationRequestId===startNavigationRequestIdRef.current){
+   if(routeActionId===routeActionRequestIdRef.current){
     toast.error((e as Error).message||'Navigation could not be started right now.');
     setNavigationTargetId(null);
    }
   }finally{
-   if(navigationRequestId===startNavigationRequestIdRef.current){
+   if(routeActionId===routeActionRequestIdRef.current){
     setSwitchingRoute(false);
     setStartingNavigation(false);
    }
   }
  }
  function stopNavigationMode(){
-  startNavigationRequestIdRef.current++;
-  directionsRequestIdRef.current++;
+  routeActionRequestIdRef.current++;
   setRouteOnlyMode(false);
   setMapRouteOverride(null);
   setNavigationRoute(null);
