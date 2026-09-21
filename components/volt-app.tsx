@@ -120,7 +120,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const [directoryNotice,setDirectoryNotice]=useState(''),[amenityNotice,setAmenityNotice]=useState(''),[amenityFetchedAt,setAmenityFetchedAt]=useState(''),[searchedRadius,setSearchedRadius]=useState('160934');
  const [routeStationsBusy,setRouteStationsBusy]=useState(false),[routeStationsError,setRouteStationsError]=useState(''),[routeStationsMode,setRouteStationsMode]=useState(false);
  const [filter,setFilter]=useState(''),[fast,setFast]=useState(false),[match,setMatch]=useState(false),[freeOnly,setFreeOnly]=useState(false),[radius,setRadius]=useState('160934');
- const [road,setRoad]=useState<RoadRoute|null>(null),[selectedRoad,setSelectedRoad]=useState<RoadRoute|null>(null),[selectedRoadBusy,setSelectedRoadBusy]=useState(false),[routeBusy,setRouteBusy]=useState(false),[routeError,setRouteError]=useState(''),[tripSnapshot,setTripSnapshot]=useState<TripInput|null>(null),[mapRouteOverride,setMapRouteOverride]=useState<RoadRoute|null>(null),[mapRouteFocusToken,setMapRouteFocusToken]=useState(0);
+ const [road,setRoad]=useState<RoadRoute|null>(null),[selectedRoad,setSelectedRoad]=useState<RoadRoute|null>(null),[selectedRoadBusy,setSelectedRoadBusy]=useState(false),[routeBusy,setRouteBusy]=useState(false),[routeError,setRouteError]=useState(''),[tripSnapshot,setTripSnapshot]=useState<TripInput|null>(null),[mapRouteOverride,setMapRouteOverride]=useState<RoadRoute|null>(null),[navigationRoute,setNavigationRoute]=useState<RoadRoute|null>(null),[mapRouteFocusToken,setMapRouteFocusToken]=useState(0);
  const [expandedChargerId,setExpandedChargerId]=useState<string|null>(null),[activeConnectorByCharger,setActiveConnectorByCharger]=useState<Record<string,string>>({}),[routeOnlyMode,setRouteOnlyMode]=useState(false),[startingNavigation,setStartingNavigation]=useState(false),[navigationTargetId,setNavigationTargetId]=useState<string|null>(null),[navigationStartedAt,setNavigationStartedAt]=useState<number|null>(null),[navigationDistanceMiles,setNavigationDistanceMiles]=useState<number|null>(null),[navigationEtaMinutes,setNavigationEtaMinutes]=useState<number|null>(null);
  const [smartPlan,setSmartPlan]=useState<SmartStopResult|null>(null);
  const [showRisk,setShowRisk]=useState(true),[focusedRisk,setFocusedRisk]=useState<string|null>(null);
@@ -222,7 +222,7 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
  },[selectedId,selectedLat,selectedLon,amenityRetry]);
  useEffect(()=>{const controller=new AbortController();void Promise.resolve().then(async()=>{if(!selectedId||selectedLat===undefined||selectedLon===undefined){setSelectedRoad(null);setSelectedRoadBusy(false);return;}setSelectedRoad(null);setSelectedRoadBusy(true);try{const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${origin.lat}&lon=${origin.lon}&toLat=${selectedLat}&toLon=${selectedLon}`,{signal:controller.signal});if(!controller.signal.aborted)setSelectedRoad({...r.data,fetchedAt:r.fetchedAt});}catch{if(!controller.signal.aborted)setSelectedRoad(null);}finally{if(!controller.signal.aborted)setSelectedRoadBusy(false);}});return()=>controller.abort();},[selectedId,selectedLat,selectedLon,origin.lat,origin.lon]);
 
- useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.current++;setRoad(null);setSmartPlan(null);setTripSnapshot(null);setMapRouteOverride(null);setRouteOnlyMode(false);setNavigationTargetId(null);setNavigationStartedAt(null);setNavigationDistanceMiles(null);setNavigationEtaMinutes(null);setRouteError('');setRouteBusy(false);setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);routeStationsSnapshot.current=null;}});return()=>{cancelled=true;};},[origin,destination,profile,battery]);
+useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.current++;setRoad(null);setSmartPlan(null);setTripSnapshot(null);setMapRouteOverride(null);setNavigationRoute(null);setRouteOnlyMode(false);setNavigationTargetId(null);setNavigationStartedAt(null);setNavigationDistanceMiles(null);setNavigationEtaMinutes(null);setRouteError('');setRouteBusy(false);setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);routeStationsSnapshot.current=null;}});return()=>{cancelled=true;};},[origin,destination,profile,battery]);
  useEffect(()=>{if(!smartPlan||!isSmartStopExpired(smartPlan,currentTime))return;let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSmartPlan(null);});return()=>{cancelled=true;};},[smartPlan,currentTime]);
  useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSmartPlan(null);});return()=>{cancelled=true;};},[reports,enteredRates]);
  useEffect(()=>{if(!((selected&&!visible.some(s=>s.id===selected.id))||(!selected&&visible.length)))return;let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSelected(visible[0]||null);});return()=>{cancelled=true;};},[visible,selected]);
@@ -288,6 +288,7 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
   setStartingNavigation(true);
   try{
    showRouteDirectionsOnMap(road);
+   setNavigationRoute(road);
    setNavigationTargetId(TRIP_DESTINATION_NAV_ID);
    setNavigationStartedAt(Date.now());
    setNavigationDistanceMiles(road.miles);
@@ -305,6 +306,7 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
   try{
    const routeToStation=await loadRoadToStation(station);
    showRouteDirectionsOnMap(routeToStation);
+   setNavigationRoute(routeToStation);
    setNavigationTargetId(station.id);
    setNavigationStartedAt(Date.now());
    setNavigationDistanceMiles(routeToStation.miles);
@@ -320,6 +322,7 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
  function stopNavigationMode(){
   setRouteOnlyMode(false);
   setMapRouteOverride(null);
+  setNavigationRoute(null);
   setNavigationTargetId(null);
   setNavigationStartedAt(null);
   setNavigationDistanceMiles(null);
@@ -329,6 +332,7 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
  function exitRouteOnlyView(){
   setRouteOnlyMode(false);
   setMapRouteOverride(null);
+  setNavigationRoute(null);
   setNavigationTargetId(null);
   setNavigationStartedAt(null);
   setNavigationDistanceMiles(null);
@@ -411,7 +415,7 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
   setRouteStationsMode(false);
   setRouteStationsError('');
   setRouteStationsBusy(false);
-  requestId.current++;routeId.current++;setLoading(false);setRouteBusy(false);setRouteError('');setError('');setRoad(null);setTripSnapshot(null);setMapRouteOverride(null);setRouteOnlyMode(false);setSmartPlan(result);
+  requestId.current++;routeId.current++;setLoading(false);setRouteBusy(false);setRouteError('');setError('');setRoad(null);setTripSnapshot(null);setMapRouteOverride(null);setNavigationRoute(null);setRouteOnlyMode(false);setSmartPlan(result);
   if(result.selected||result.candidates.length){
    setDirectoryNotice('');
    setFilter('');setFast(false);setFreeOnly(false);setMatch(false);setOpenNow(false);setAllDay(false);setEmergency(false);
@@ -421,7 +425,7 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
    setSelected(view==='backup'&&backup?backup.station:result.selected?.station||listed[0]||null);setFetchedAt(result.directoryFetchedAt||'');setCenter({...result.input.origin,label:result.selected?'Smart Stop candidates':'Candidates to review, not recommendations'});
   }
  }
- async function plan(input:TripInput={origin,destination,profile,battery}){setSmartPlan(null);routeStationsSnapshot.current=null;setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);const id=++routeId.current;setRouteBusy(true);setRouteError('');setRoad(null);setMapRouteOverride(null);setRouteOnlyMode(false);try{const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${input.origin.lat}&lon=${input.origin.lon}&toLat=${input.destination.lat}&toLon=${input.destination.lon}`);if(id!==routeId.current)return;setRoad({...r.data,fetchedAt:r.fetchedAt});setTripSnapshot(input);}catch(e){if(id===routeId.current)setRouteError((e as Error).message);}finally{if(id===routeId.current)setRouteBusy(false);}}
+async function plan(input:TripInput={origin,destination,profile,battery}){setSmartPlan(null);routeStationsSnapshot.current=null;setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);const id=++routeId.current;setRouteBusy(true);setRouteError('');setRoad(null);setMapRouteOverride(null);setNavigationRoute(null);setRouteOnlyMode(false);try{const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${input.origin.lat}&lon=${input.origin.lon}&toLat=${input.destination.lat}&toLon=${input.destination.lon}`);if(id!==routeId.current)return;setRoad({...r.data,fetchedAt:r.fetchedAt});setTripSnapshot(input);}catch(e){if(id===routeId.current)setRouteError((e as Error).message);}finally{if(id===routeId.current)setRouteBusy(false);}}
  async function save(kind:Saved['kind'],payload:Saved['payload']){if(!accessToken){void requestGoogleSignIn();return;}setSaving(true);try{await api('/api/account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,payload})},accessToken);await loadAccount();toast.success('Saved to your account.');}catch(e){toast.error((e as Error).message);}finally{setSaving(false);}}
  async function remove(id:string){if(!accessToken){void requestGoogleSignIn();return;}setSaving(true);try{await api(`/api/account?id=${encodeURIComponent(id)}`,{method:'DELETE'},accessToken);setSaved(items=>items.filter(i=>i.id!==id));toast.success('Removed from saved items.');}catch(e){toast.error((e as Error).message);}finally{setSaving(false);}}
  async function report(status:DriverReport['status']){if(!selected)return;if(!accessToken){void requestGoogleSignIn();return;}const payload={sourceId:selected.id,stationName:selected.name,status,note:''};setSaving(true);try{const result=await api<{updated:number}>('/api/account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'report',payload})},accessToken);setReports(r=>({...r,[payload.sourceId]:{...payload,reportedAt:result.updated}}));setHoursClock(Date.now());toast.success('Your timestamped station report was saved.');}catch(e){toast.error((e as Error).message);}finally{setSaving(false);}}
@@ -545,7 +549,7 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
    </aside>
    <section id="charger-map" className="vr-main" aria-label="Charger map and trip results" tabIndex={0}><div className="vr-map-tools"><label className="station-search"><Search size={18}/><input aria-label="Filter loaded stations" placeholder="Filter station name or network" value={filter} onChange={e=>setFilter(e.target.value)}/></label><label className="vr-toggle"><Switch checked={fast} onCheckedChange={setFast}/>100+ kW</label><label className="vr-toggle"><Switch checked={match} onCheckedChange={setMatch}/>My connector</label><label className="vr-toggle"><Switch checked={freeOnly} onCheckedChange={setFreeOnly}/>Listed as free</label><label className="vr-toggle"><Switch checked={openNow} onCheckedChange={setOpenNow}/>Open now</label><label className="vr-toggle"><Switch checked={allDay} onCheckedChange={setAllDay}/>24/7</label><p className="hours-filter-note">Opening-hours filters use listed schedules in station local time. They do not indicate free charging ports.</p></div>
     {!routeOnlyMode&&<ChargeSessionAssistant station={selected} vehicleName={profile.name} enteredRate={selected?enteredRates[selected.id]||'':''}/>}
-    <ChargerMap availability={stationAvailability} center={center} stations={mapStations} selected={mapSelected} amenities={mapAmenities} route={mapRouteOverride||smartPlan?.route||road} routeFocusToken={mapRouteFocusToken} backupRoute={routeOnlyMode?null:smartPlan?.selected?.backup?.route||null} mainId={routeOnlyMode?undefined:smartPlan?.selected?.station.id} backupId={routeOnlyMode?undefined:smartPlan?.selected?.backup?.station.id} riskSections={mapRiskSections} focusedRiskId={focusedRisk} onRiskFocus={id=>setFocusedRisk(current=>current===id?null:id)} onSelect={setSelected} onSearch={p=>loadStations(p)} fetchedAt={fetchedAt}/>
+    <ChargerMap availability={stationAvailability} center={center} stations={mapStations} selected={mapSelected} amenities={mapAmenities} route={navigationRoute||mapRouteOverride||smartPlan?.route||road} routeFocusToken={mapRouteFocusToken} backupRoute={routeOnlyMode?null:smartPlan?.selected?.backup?.route||null} mainId={routeOnlyMode?undefined:smartPlan?.selected?.station.id} backupId={routeOnlyMode?undefined:smartPlan?.selected?.backup?.station.id} riskSections={mapRiskSections} focusedRiskId={focusedRisk} onRiskFocus={id=>setFocusedRisk(current=>current===id?null:id)} onSelect={setSelected} onSearch={p=>loadStations(p)} fetchedAt={fetchedAt}/>
     {!routeOnlyMode&&<div className="map-key"><span className="cluster-key">Numbered groups: mapped stations. Tap to zoom.</span><span className="unknown-color">● Unknown status</span><span className="recent-color">● Recent observation</span><span>● Live operator status</span><span className="food-color">● Food</span><span className="restroom-color">● Restrooms</span><span className="shopping-color">● Shopping</span><span className="route-color">● Search center{!tripAssessment||!showRisk?' / road route':''}</span>{smartPlan?.selected?.backup?.route&&<span className="backup-color">Dashed path: main → backup</span>}</div>}
     {navigationTargetName&&<section className="navigation-mode-banner" role="status"><div><p className="eyebrow">VoltRoute navigation mode</p><h3>{navigationTargetName}</h3><p>{navigationDistanceMiles!==null?`${navigationDistanceMiles.toFixed(1)} road miles`:''}{navigationDistanceMiles!==null&&navigationEtaMinutes!==null?' · ':''}{navigationEtaMinutes!==null?`~${navigationEtaMinutes} min`:''}{navigationStartedAt?` · started ${evidenceTime(navigationStartedAt)}`:''}</p></div><div className="navigation-mode-actions"><Button variant="outline" type="button" onClick={exitRouteOnlyView}>Show charger list</Button><Button variant="outline" type="button" onClick={stopNavigationMode}>Stop</Button></div></section>}
     {!routeOnlyMode&&smartPlan&&<TripIntelligencePanel result={smartPlan} assessment={tripAssessment} now={currentTime}/>} 
