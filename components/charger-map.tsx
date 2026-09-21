@@ -6,10 +6,10 @@ import { evidenceTime, type AvailabilityInfo } from '@/lib/station-evidence';
 import { riskStyles, type RiskSection } from '@/lib/trip-assessment';
 import 'leaflet/dist/leaflet.css';
 type MapStyle='road'|'satellite';
-export default function ChargerMap({center,stations,selected,amenities,route,routeFocusToken,backupRoute,mainId,backupId,riskSections,focusedRiskId,onRiskFocus,availability,onSelect,onSearch,fetchedAt}:{center:Point;stations:Station[];selected:Station|null;amenities:Amenity[];route:RoadRoute|null;routeFocusToken:number;backupRoute:RoadRoute|null;mainId?:string;backupId?:string;riskSections:RiskSection[];focusedRiskId:string|null;onRiskFocus:(id:string)=>void;availability:Map<string,AvailabilityInfo>;onSelect:(s:Station)=>void;onSearch:(p:Point)=>void;fetchedAt:string}) {
+export default function ChargerMap({center,stations,selected,amenities,route,routeFocusToken,navigationMode,navigationLocation,backupRoute,mainId,backupId,riskSections,focusedRiskId,onRiskFocus,availability,onSelect,onSearch,fetchedAt}:{center:Point;stations:Station[];selected:Station|null;amenities:Amenity[];route:RoadRoute|null;routeFocusToken:number;navigationMode:boolean;navigationLocation:{lat:number;lon:number;accuracyMeters:number|null;heading:number|null}|null;backupRoute:RoadRoute|null;mainId?:string;backupId?:string;riskSections:RiskSection[];focusedRiskId:string|null;onRiskFocus:(id:string)=>void;availability:Map<string,AvailabilityInfo>;onSelect:(s:Station)=>void;onSearch:(p:Point)=>void;fetchedAt:string}) {
  const container=useRef<HTMLDivElement>(null), map=useRef<Leaflet.Map|null>(null), L=useRef<typeof Leaflet|null>(null), layer=useRef<Leaflet.LayerGroup|null>(null),initialCenter=useRef(center);
  const baseLayers=useRef<{road:Leaflet.TileLayer|null;roadFallback:Leaflet.TileLayer|null;satellite:Leaflet.TileLayer|null;labels:Leaflet.TileLayer|null}>({road:null,roadFallback:null,satellite:null,labels:null});
- const roadFallbackActive=useRef(false),mapStyleRef=useRef<MapStyle>('road');
+ const roadFallbackActive=useRef(false),mapStyleRef=useRef<MapStyle>('road'),navigationCenteredRef=useRef(false);
  const [ready,setReady]=useState(false),[error,setError]=useState(''),[viewRevision,setViewRevision]=useState(0),[mapStyle,setMapStyle]=useState<MapStyle>('road');
  const visibleBounds=useRef<[number,number][]>([]);
  const choose=useRef(onSelect),focusRisk=useRef(onRiskFocus);
@@ -59,12 +59,26 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
   const add=(lat:number,lon:number,text:string,color:string,radius:number,click?:()=>void)=>{bounds.push([lat,lon]);const el=document.createElement('span');el.textContent=text;const marker=lib.circleMarker([lat,lon],{radius,fillColor:color,color:'#10241a',weight:2,fillOpacity:1}).bindTooltip(el).addTo(layer.current!);if(click)marker.on('click',click);};
   const hasRisks=riskSections.length>0;
   if(route){
-   lib.polyline(route.coordinates.map(([lon,lat])=>[lat,lon]),{color:hasRisks?'#9ca9b1':'#428cff',weight:4}).addTo(layer.current);
+   const routeCoordinates=route.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]);
+   if(navigationMode)lib.polyline(routeCoordinates,{color:'#d5e0ff',weight:10,opacity:.9,interactive:false}).addTo(layer.current);
+   lib.polyline(routeCoordinates,{color:navigationMode?'#355dff':hasRisks?'#9ca9b1':'#428cff',weight:navigationMode?6:4}).addTo(layer.current);
    if(route.coordinates.length){
     const [startLon,startLat]=route.coordinates[0];
     const [endLon,endLat]=route.coordinates[route.coordinates.length-1];
     add(startLat,startLon,'Trip start','#5b8def',6);
     add(endLat,endLon,'Trip destination','#5b8def',8);
+   }
+  }
+  if(navigationMode&&navigationLocation){
+   if(navigationLocation.accuracyMeters&&navigationLocation.accuracyMeters>0){
+    lib.circle([navigationLocation.lat,navigationLocation.lon],{radius:Math.min(220,navigationLocation.accuracyMeters),color:'#7ab3ff',fillColor:'#7ab3ff',fillOpacity:.15,weight:1}).addTo(layer.current);
+   }
+   lib.circleMarker([navigationLocation.lat,navigationLocation.lon],{radius:8,color:'#fff',weight:3,fillColor:'#2f6bff',fillOpacity:1}).addTo(layer.current);
+   if(navigationLocation.heading!==null){
+    const headingRadians=navigationLocation.heading*Math.PI/180;
+    const tipLat=navigationLocation.lat+(Math.cos(headingRadians)*0.0014);
+    const tipLon=navigationLocation.lon+(Math.sin(headingRadians)*0.0014);
+    lib.polyline([[navigationLocation.lat,navigationLocation.lon],[tipLat,tipLon]],{color:'#2f6bff',weight:4,lineCap:'round'}).addTo(layer.current);
    }
   }
   if(backupRoute){
@@ -107,14 +121,25 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
   for(const s of pinned)drawStation(s);
   for(const p of amenities)add(p.lat,p.lon,`${p.kind==='food'?'Food':p.kind==='shopping'?'Shopping':'Restroom'}: ${p.name}`,p.kind==='food'?'#f5a65b':p.kind==='shopping'?'#f6d66d':'#9288ff',6);
   visibleBounds.current=bounds;
- },[ready,viewRevision,center,stations,selected,amenities,route,backupRoute,mainId,backupId,availability,riskSections,focusedRiskId]);
+ },[ready,viewRevision,center,stations,selected,amenities,route,navigationMode,navigationLocation,backupRoute,mainId,backupId,availability,riskSections,focusedRiskId]);
  useEffect(()=>{const focused=riskSections.find(section=>section.id===focusedRiskId);const coordinates=focused?.coordinates||[...(route?.coordinates||[]),...(backupRoute?.coordinates||[])];if(ready&&coordinates.length)map.current?.fitBounds(coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[35,35],maxZoom:14});},[ready,route,backupRoute,focusedRiskId,riskSections]);
  useEffect(()=>{
   if(!ready||!route?.coordinates.length)return;
   map.current?.fitBounds(route.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[35,35],maxZoom:14});
  },[ready,route,routeFocusToken]);
+ useEffect(()=>{
+  if(!ready||!navigationMode||!navigationLocation||!map.current)return;
+  const current:[number,number]=[navigationLocation.lat,navigationLocation.lon];
+  if(!navigationCenteredRef.current){
+   map.current.setView(current,Math.max(15,map.current.getZoom()));
+   navigationCenteredRef.current=true;
+   return;
+  }
+  map.current.panTo(current,{animate:true,duration:.7});
+ },[ready,navigationMode,navigationLocation,navigationLocation?.lat,navigationLocation?.lon]);
+ useEffect(()=>{if(!navigationMode)navigationCenteredRef.current=false;},[navigationMode]);
  return <div className="map-panel-shell">
-  <div className="map-hud map-hud-inline" aria-live="polite">
+  {!navigationMode&&<div className="map-hud map-hud-inline" aria-live="polite">
    <span className="map-hud-live">Live map</span>
    <span>{stations.length} chargers shown</span>
    {fetchedAt&&<span>Updated {evidenceTime(fetchedAt)}</span>}
@@ -123,7 +148,7 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
     <button type="button" disabled={!ready} aria-pressed={mapStyle==='satellite'} onClick={()=>setMapStyle('satellite')}>Satellite</button>
     <button type="button" className="map-search-trigger" disabled={!ready} onClick={()=>{const c=map.current?.getCenter();if(!c)return;onSearch({lat:c.lat,lon:c.lng,label:'Selected map area'});}}>Search this map area</button>
    </div>
-  </div>
+  </div>}
   <div className="real-map"><div ref={container} className="leaflet-host" aria-label="Interactive charging-station map" />
    {error&&<p className="map-error" role="status">{error}</p>}
   </div>
