@@ -42,6 +42,9 @@ const WORKER_TERMS_URL=`${WORKER_SITE_ORIGIN}/terms`;
 type DriverReport={sourceId:string;stationName:string;status:'working'|'busy'|'broken';note:string;reportedAt?:number};
 type Saved = {id:string;kind:'profile'|'station'|'trip'|'report';payload:Profile | (Point&{sourceId:string}) | TripInput | DriverReport;updated:number};
 type NavigationLocationState={lat:number;lon:number;accuracyMeters:number|null;heading:number|null;speedMph:number|null;recordedAt:number};
+function hasRenderableRoute(route:RoadRoute|null|undefined):route is RoadRoute{
+ return !!route&&Array.isArray(route.coordinates)&&route.coordinates.length>1&&Number.isFinite(route.miles)&&route.miles>0;
+}
 async function api<T>(path:string,init?:RequestInit,accessToken?:string):Promise<T>{const headers=new Headers(init?.headers);if(accessToken)headers.set('Authorization',`Bearer ${accessToken}`);const response=await fetch(path,{...init,headers});const data=await response.json() as T & {error?:string};if(!response.ok)throw new Error(data.error || 'Something went wrong. Please try again.');return data;}
 function directions(p:{lat:number;lon:number},walking=false){return `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}&travelmode=${walking?'walking':'driving'}`;}
 function googleEvSearch(point:{lat:number;lon:number}){return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`EV charging stations near ${point.lat},${point.lon}`)}`;}
@@ -337,6 +340,7 @@ useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.cu
   }
  }
  function showRouteDirectionsOnMap(routeToShow:RoadRoute,message?:string){
+  if(!hasRenderableRoute(routeToShow)){toast.error('A complete route could not be confirmed. Please retry.');return;}
   setMapRouteOverride(routeToShow);
   setPinnedMapRoute(routeToShow);
   setMapRouteFocusToken(token=>token+1);
@@ -349,11 +353,20 @@ useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.cu
   setNavigationRecenterToken(token=>token+1);
  }
  async function loadRoadToStation(station:Station){
-  if(selectedRoad&&selected?.id===station.id)return selectedRoad;
-  const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${origin.lat}&lon=${origin.lon}&toLat=${station.lat}&toLon=${station.lon}`);
-  const routeToStation={...r.data,fetchedAt:r.fetchedAt};
-  setSelectedRoad(routeToStation);
-  return routeToStation;
+  if(hasRenderableRoute(selectedRoad)&&selected?.id===station.id)return selectedRoad;
+  let lastError:Error|null=null;
+  for(let attempt=0;attempt<2;attempt++){
+   try{
+    const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${origin.lat}&lon=${origin.lon}&toLat=${station.lat}&toLon=${station.lon}`);
+    const routeToStation={...r.data,fetchedAt:r.fetchedAt};
+    if(!hasRenderableRoute(routeToStation))throw new Error('Route geometry is incomplete for this destination.');
+    setSelectedRoad(routeToStation);
+    return routeToStation;
+   }catch(error){
+    lastError=error instanceof Error?error:new Error('Route could not be loaded right now.');
+   }
+  }
+  throw lastError||new Error('Route could not be loaded right now.');
  }
  async function showDirectionsToStation(station:Station){
   setSelected(station);
@@ -373,16 +386,25 @@ useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.cu
   await showDirectionsToStation(selected);
  }
  async function startTripNavigation(){
-  if(!road||!tripSnapshot){toast.info('Calculate the route first to start navigation mode.');return;}
+  if(!tripSnapshot){toast.info('Calculate the route first to start navigation mode.');return;}
   setStartingNavigation(true);
   try{
-   showRouteDirectionsOnMap(road);
-   setNavigationRoute(road);
-   setPinnedMapRoute(road);
+   let routeForNavigation=hasRenderableRoute(road)?road:null;
+   if(!routeForNavigation){
+    const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${tripSnapshot.origin.lat}&lon=${tripSnapshot.origin.lon}&toLat=${tripSnapshot.destination.lat}&toLon=${tripSnapshot.destination.lon}`);
+    routeForNavigation={...r.data,fetchedAt:r.fetchedAt};
+    if(!hasRenderableRoute(routeForNavigation))throw new Error('Navigation route could not be loaded. Please retry.');
+    setRoad(routeForNavigation);
+   }
+   showRouteDirectionsOnMap(routeForNavigation);
+   setNavigationRoute(routeForNavigation);
+   setPinnedMapRoute(routeForNavigation);
    setNavigationTargetId(TRIP_DESTINATION_NAV_ID);
-   setNavigationDistanceMiles(road.miles);
-   setNavigationEtaMinutes(Math.round(road.minutes));
+   setNavigationDistanceMiles(routeForNavigation.miles);
+   setNavigationEtaMinutes(Math.round(routeForNavigation.minutes));
    toast.success('VoltRoute navigation mode started for your destination route.');
+  }catch(error){
+   toast.error(error instanceof Error?error.message:'Navigation route could not be loaded right now.');
   }finally{
    setStartingNavigation(false);
   }

@@ -10,6 +10,7 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
  const container=useRef<HTMLDivElement>(null), map=useRef<Leaflet.Map|null>(null), L=useRef<typeof Leaflet|null>(null), layer=useRef<Leaflet.LayerGroup|null>(null),routeLayer=useRef<Leaflet.LayerGroup|null>(null),navigationLayer=useRef<Leaflet.LayerGroup|null>(null),initialCenter=useRef(center);
  const baseLayers=useRef<{road:Leaflet.TileLayer|null;roadFallback:Leaflet.TileLayer|null;satellite:Leaflet.TileLayer|null;labels:Leaflet.TileLayer|null}>({road:null,roadFallback:null,satellite:null,labels:null});
  const roadFallbackActive=useRef(false),mapStyleRef=useRef<MapStyle>('road');
+ const lastNavigationRouteRef=useRef<RoadRoute|null>(null);
  const [ready,setReady]=useState(false),[error,setError]=useState(''),[viewRevision,setViewRevision]=useState(0),[mapStyle,setMapStyle]=useState<MapStyle>('road');
  const visibleBounds=useRef<[number,number][]>([]);
  const choose=useRef(onSelect),focusRisk=useRef(onRiskFocus);
@@ -53,6 +54,10 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
   applyMapStyle(mapStyle);
  },[ready,mapStyle]);
  useEffect(()=>{if(ready)map.current?.setView([center.lat,center.lon],12);},[ready,center.lat,center.lon]);
+ const routeHasGeometry=!!route?.coordinates?.length&&route.coordinates.length>1;
+ useEffect(()=>{
+  if(navigationMode&&routeHasGeometry&&route)lastNavigationRouteRef.current=route;
+ },[navigationMode,route,routeHasGeometry]);
  useEffect(()=>{
   if(!ready||!L.current||!layer.current)return;const lib=L.current;layer.current.clearLayers();
   const bounds:[number,number][]=[];
@@ -113,15 +118,16 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
   if(!ready||!L.current||!routeLayer.current)return;
   const lib=L.current;
   routeLayer.current.clearLayers();
-  if(!navigationMode||!route?.coordinates.length)return;
-  const routeCoordinates=route.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]);
+  const routeToDraw=navigationMode?(routeHasGeometry&&route?route:lastNavigationRouteRef.current):null;
+  if(!navigationMode||!routeToDraw?.coordinates.length)return;
+  const routeCoordinates=routeToDraw.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]);
   lib.polyline(routeCoordinates,{color:'#d5e0ff',weight:10,opacity:.9,interactive:false}).addTo(routeLayer.current);
   lib.polyline(routeCoordinates,{color:'#355dff',weight:6}).addTo(routeLayer.current);
-  const [startLon,startLat]=route.coordinates[0];
-  const [endLon,endLat]=route.coordinates[route.coordinates.length-1];
+  const [startLon,startLat]=routeToDraw.coordinates[0];
+  const [endLon,endLat]=routeToDraw.coordinates[routeToDraw.coordinates.length-1];
   lib.circleMarker([startLat,startLon],{radius:6,fillColor:'#5b8def',color:'#10241a',weight:2,fillOpacity:1}).bindTooltip('Trip start').addTo(routeLayer.current);
   lib.circleMarker([endLat,endLon],{radius:8,fillColor:'#5b8def',color:'#10241a',weight:2,fillOpacity:1}).bindTooltip('Trip destination').addTo(routeLayer.current);
- },[ready,navigationMode,route,routeFocusToken]);
+ },[ready,navigationMode,route,routeFocusToken,routeHasGeometry]);
  useEffect(()=>{
   if(!ready||!L.current||!navigationLayer.current)return;
   const lib=L.current;
@@ -149,13 +155,15 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
   map.current?.fitBounds(route.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[35,35],maxZoom:14});
  },[ready,route,routeFocusToken,navigationMode]);
  useEffect(()=>{
-  if(!ready||!navigationMode||!route?.coordinates.length||!map.current)return;
-  const focusPoints=route.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]);
+  const routeToFocus=navigationMode?(routeHasGeometry&&route?route:lastNavigationRouteRef.current):null;
+  if(!ready||!navigationMode||!routeToFocus?.coordinates.length||!map.current)return;
+  const focusPoints=routeToFocus.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]);
   if(navigationLocation)focusPoints.push([navigationLocation.lat,navigationLocation.lon]);
   map.current.fitBounds(focusPoints,{padding:[34,34],maxZoom:14});
- },[ready,navigationMode,route,navigationRecenterToken,navigationLocation?.lat,navigationLocation?.lon,navigationLocation]);
+ },[ready,navigationMode,route,navigationRecenterToken,navigationLocation?.lat,navigationLocation?.lon,navigationLocation,routeHasGeometry]);
  useEffect(()=>{
   if(navigationMode)return;
+  lastNavigationRouteRef.current=null;
   routeLayer.current?.clearLayers();
   navigationLayer.current?.clearLayers();
  },[navigationMode]);
