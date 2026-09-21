@@ -248,6 +248,19 @@
 .account-nav button{border:0;background:transparent;color:inherit;font:inherit;cursor:pointer}.account-nav button:hover{text-decoration:underline}.account-nav button:disabled{opacity:.6;cursor:wait}
 .account-prompt{margin:.75rem 0;padding:1rem;border:1px solid rgba(145,255,183,.18);border-radius:14px;background:rgba(75,190,104,.07)}.account-prompt p{margin:0 0 .7rem;color:#b8c8c0;line-height:1.45}
 
+.trip-action-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.battery-presets{display:flex;flex-wrap:wrap;gap:8px}
+.battery-presets button{min-height:36px;padding:6px 11px;border:1px solid #48664f;border-radius:999px;background:#14281d;color:#c5d6cc;font-size:13px;cursor:pointer}
+.battery-presets button.is-active{border-color:#91f8a8;background:#214130;color:#edfff3}
+.trip-setup-card{padding:12px;border:1px solid #405b48;border-radius:10px;background:#13271c}
+.trip-setup-card h3{margin:0 0 9px;font-size:14px}
+.trip-setup-card ul{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+.trip-setup-card li{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.45}
+.trip-setup-card li svg{flex-shrink:0;margin-top:2px}
+.trip-check-ok{color:#c5f5d0}
+.trip-check-pending{color:#efcc9f}
+@media(max-width:540px){.trip-action-row{grid-template-columns:1fr}}
+
 .trip-intelligence{padding:20px;border-bottom:1px solid #46614f;background:#10251a;min-width:0;overflow-wrap:anywhere}
 .trip-intelligence-heading{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}.trip-intelligence-heading h2{margin:2px 0 0;font-size:1.25rem}.trip-intelligence-state{display:flex;align-items:center;gap:7px;border:1px solid #5d7b66;border-radius:999px;padding:6px 10px;font-size:.8125rem;color:#d9eadf;background:#1a3424}.trip-intelligence-note{font-size:.875rem;line-height:1.6;color:#bdd0c3;margin:12px 0 16px}
 .trip-intelligence-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.trip-intelligence-grid article{display:grid;gap:7px;padding:13px;border:1px solid #3f5d48;border-radius:11px;background:#162d20;min-width:0}.trip-intelligence-grid article>svg{width:18px;height:18px;color:#b4edc0}.trip-intelligence-grid article>span{font-size:.78rem;line-height:1.35;color:#aebfb2}.trip-intelligence-grid article>strong{font-size:1rem;line-height:1.35;color:#eff8f1}.trip-intelligence-grid article>small{font-size:.76rem;line-height:1.5;color:#bdd0c3}

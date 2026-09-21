@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { Zap, LocateFixed, Search, Navigation, Utensils, Toilet, Bookmark, Route, Car, ArrowRight, MapPin, X, AlertTriangle, Clock3, CheckCircle2, Link2 } from 'lucide-react';
+import { Zap, LocateFixed, Search, Navigation, Utensils, Toilet, Bookmark, Route, Car, ArrowRight, MapPin, X, AlertTriangle, Clock3, CheckCircle2, Link2, ArrowUpDown, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -210,6 +210,23 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
    toast.error('Could not copy link automatically. Please retry and allow clipboard access.');
   }
  }
+ function swapTripEndpoints(){
+  const nextOrigin=destination;
+  const nextDestination=origin;
+  setOrigin(nextOrigin);
+  setDestination(nextDestination);
+  void loadStations(nextOrigin);
+  toast.info('From and To locations swapped.');
+ }
+ function resetTripSetup(){
+  setOrigin(chicago);
+  setDestination(detroit);
+  setProfile(defaultProfile);
+  setBattery(80);
+  setWorkspaceTab('trip');
+  void loadStations(chicago);
+  toast.info('Trip setup reset to default values.');
+ }
  function showSmartStop(result:SmartStopResult,view:'main'|'backup'='main'){
   stationRequest.current?.abort();
   requestId.current++;routeId.current++;setLoading(false);setRouteBusy(false);setRouteError('');setError('');setRoad(null);setTripSnapshot(null);setSmartPlan(result);
@@ -229,6 +246,15 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  function chooseCatalogVehicle(vehicle:CatalogVehicle){setVehicleType(vehicle.type);setVehicleMake(vehicle.make);setVehicleModel(vehicle.model);setProfile({name:vehicle.name,connector:vehicle.connector,range:vehicle.range});setCustomVehicle(false);}
  const makesForType=vehicleMakes.filter(make=>vehicleCatalog.some(v=>v.make===make&&v.type===vehicleType));
  const modelsForMake=vehicleCatalog.filter(v=>v.make===vehicleMake&&v.type===vehicleType);
+ const sameTripEndpoints=origin.lat===destination.lat&&origin.lon===destination.lon;
+ const tripBatteryValid=Number.isFinite(battery)&&battery>=1&&battery<=100;
+ const tripProfileValid=!!profile.name.trim()&&profile.range>=30&&profile.range<=600;
+ const tripReady=!sameTripEndpoints&&tripBatteryValid&&tripProfileValid;
+ const tripChecklist=[
+  {label:'Start and destination are different',done:!sameTripEndpoints},
+  {label:'Starting battery is between 1% and 100%',done:tripBatteryValid},
+  {label:'EV range is between 30 and 600 miles',done:tripProfileValid},
+ ];
  const restaurantCount=amenities.filter(a=>a.kind==='food').length,restroomCount=amenities.filter(a=>a.kind==='restroom').length;
  const connectorMatch=selected?selected.connectors.includes(profile.connector):false;
  useEffect(()=>{
@@ -302,10 +328,14 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
      <div className="inline-controls"><Select value={radius} onValueChange={setRadius}><SelectTrigger aria-label="Search radius"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="160934">100-mile area</SelectItem><SelectItem value="241402">150-mile area</SelectItem><SelectItem value="321869">200-mile area</SelectItem><SelectItem value="402336">250-mile area</SelectItem></SelectContent></Select><Button variant="outline" aria-label="Use current location" disabled={locating} onClick={locate}><LocateFixed/>{locating?'Locating…':'Near me'}</Button></div>
      <Button className="full" disabled={loading} onClick={()=>loadStations(origin)}><Search/>{loading?'Finding chargers…':'Find chargers'}</Button><Button className="full emergency-button" variant={emergency?'default':'outline'} onClick={()=>{setEmergency(v=>!v);setMatch(true);if(!emergency)toast.info('Emergency mode shows the closest compatible chargers.');}}><AlertTriangle/>{emergency?'Emergency mode on':'Low battery emergency'}</Button><p className="muted-small">Location is shared only when you choose Near me. Searches use third-party map services.</p>
     </TabsContent>
-    <TabsContent value="trip" className="tab-body"><PlacePicker label="From" value={origin} onSelect={pickOrigin}/><PlacePicker label="To" value={destination} onSelect={setDestination}/><label className="form-label">Starting battery (%)<input type="number" min={1} max={100} value={battery} onChange={e=>setBattery(Number(e.target.value))}/></label>
+    <TabsContent value="trip" className="tab-body"><PlacePicker label="From" value={origin} onSelect={pickOrigin}/><PlacePicker label="To" value={destination} onSelect={setDestination}/>
+     <div className="trip-action-row"><Button variant="outline" type="button" onClick={swapTripEndpoints}><ArrowUpDown/>Swap from / to</Button><Button variant="outline" type="button" onClick={resetTripSetup}><RotateCcw/>Reset trip setup</Button></div>
+     <label className="form-label">Starting battery (%)<input type="number" min={1} max={100} value={battery} onChange={e=>setBattery(Number(e.target.value))}/></label>
+     <div className="battery-presets" role="group" aria-label="Quick battery presets">{[20,40,60,80,100].map(level=><button key={level} type="button" className={battery===level?'is-active':''} onClick={()=>setBattery(level)}>{level}%</button>)}</div>
+     <section className="trip-setup-card" aria-live="polite"><h3>Trip setup checklist</h3><ul>{tripChecklist.map(item=><li key={item.label} className={item.done?'trip-check-ok':'trip-check-pending'}>{item.done?<CheckCircle2 size={15}/>:<AlertTriangle size={15}/>}<span>{item.label}</span></li>)}</ul>{sameTripEndpoints&&<p className="error-text" role="alert">Choose two different places for From and To before planning.</p>}</section>
      <SmartStopPlanner origin={origin} destination={destination} profile={profile} battery={battery} now={hoursClock} reportsVersion={JSON.stringify(reports)} enteredRates={enteredRates} accessToken={accessToken} onResult={showSmartStop} onClear={()=>setSmartPlan(null)} onView={(result,stop)=>{showSmartStop(result,stop);document.querySelector('.vr-details')?.scrollIntoView({behavior:'smooth',block:'start'});}}/>
-     <Button variant="outline" className="full" disabled={routeBusy||battery<1||battery>100||profile.range<30||profile.range>600} onClick={()=>plan()}><Route/>{routeBusy?'Calculating…':'Road route only'}</Button>
-     <Button variant="outline" className="full" onClick={()=>void copyShareTripLink()}><Link2/>Copy trip share link</Button>
+     <Button variant="outline" className="full" disabled={routeBusy||!tripReady} onClick={()=>plan()}><Route/>{routeBusy?'Calculating…':'Road route only'}</Button>
+     <Button variant="outline" className="full" disabled={!tripReady} onClick={()=>void copyShareTripLink()}><Link2/>Copy trip share link</Button>
      <p className="muted-small">Share link includes origin, destination, EV profile and battery so anyone can reopen the same trip setup.</p>
      {routeError&&<p className="error-text" role="alert">{routeError}</p>}
      {road&&tripSnapshot&&<section className="route-result"><h3>{Math.round(road.miles)} miles · {Math.floor(road.minutes/60)}h {Math.round(road.minutes%60)}m driving</h3><p>{tripSnapshot.origin.label} → {tripSnapshot.destination.label}</p><strong>{checkpoints.length} estimated charging check{checkpoints.length===1?'':'s'}</strong><p className="muted-small">Planning estimate using your entered range, a 15% reserve and charging to 80%. No traffic, weather, detours or charge time included. This is not a verified EV itinerary.</p>
@@ -342,7 +372,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
     </section>
    </section>
    <aside id="charging-stop" tabIndex={-1} className="vr-details">{selected?<><p className="eyebrow">Charging stop</p><h2>{selected.name}</h2><p className="muted-small">{selected.address||`${selected.lat.toFixed(4)}, ${selected.lon.toFixed(4)}`}</p><StationEvidence station={selected} info={stationAvailability.get(selected.id)!} fetchedAt={fetchedAt}/><section className="live-refresh"><div><strong>Live operator check</strong><p>{liveLoading?'Checking TomTom availability…':liveError?liveError:stationAvailability.get(selected.id)?.freshness==='live'?stationAvailability.get(selected.id)?.label:'No live port count confirmed for this charger.'}</p></div><Button type="button" variant="outline" disabled={liveLoading} onClick={()=>void refreshLive(selected)}>{liveLoading?'Checking…':'Refresh live status'}</Button></section><div className={`compatibility-alert ${connectorMatch?'is-compatible':'is-incompatible'}`}>{connectorMatch?<CheckCircle2/>:<AlertTriangle/>}<div><strong>{connectorMatch?'Connector type matches':'Connector match unconfirmed'}</strong><span>Your {profile.name} uses {profile.connector}. Station lists {selected.connectors.join(', ')||'no connector details'}. Check model-year, adapter and network access requirements.</span></div></div><dl className="station-facts"><div><dt>Driving distance</dt><dd>{selectedRoadBusy?'Calculating…':selectedRoad?`${selectedRoad.miles.toFixed(1)} mi · ${Math.round(selectedRoad.minutes)} min`:'Unavailable'}</dd></div><div><dt>Map distance</dt><dd>{selected.distance.toFixed(1)} mi straight-line</dd></div><div><dt>Power</dt><dd>{selected.power?`${selected.power} kW`:'Not published'}</dd></div><div><dt>Connectors</dt><dd>{selected.connectors.join(', ')||'Not published'}</dd></div><div><dt>Access</dt><dd>{selected.access==='Access not listed'?'Public access not confirmed':selected.access}</dd></div></dl><StationHours sourceUrl={selected.sourceUrl} hours={selected.hours} info={stationHours.get(selected.id)} checkedAt={hoursClock}/><StationPrice key={selected.id} station={selected} info={stationPrices.get(selected.id)!} range={profile.range} connector={profile.connector} enteredRate={enteredRates[selected.id]||''} onRateChange={value=>setEnteredRates(previous=>({...previous,[selected.id]:value}))}/>{signedIn?<section className="driver-report"><h3>Your station report</h3><p>{reports[selected.id]?`Your latest report: ${reports[selected.id].status} · ${evidenceTime(reports[selected.id].reportedAt)}`:'No report from you yet. Record the condition you observed at this station.'}</p><p className="muted-small">Saved privately to your account. Reports are recent for 24 hours and do not confirm a free port.</p><div><Button variant="outline" disabled={saving} onClick={()=>report('working')}>Working</Button><Button variant="outline" disabled={saving} onClick={()=>report('busy')}>Busy</Button><Button variant="outline" disabled={saving} onClick={()=>report('broken')}>Broken</Button></div></section>:<section className="account-prompt"><p>Sign in to save a private station report or share a community observation.</p><Button type="button" variant="outline" onClick={()=>void requestGoogleSignIn()}>Continue with Google</Button></section>}
-    <p className="muted-small">Hours may change. Check the station listing before travelling.</p><Button asChild className="full"><a href={stationLookup(selected)} target="_blank" rel="noreferrer"><Search/>Find station on Google Maps</a></Button><Button asChild className="full" variant="outline"><a href={directions(selected)} target="_blank" rel="noreferrer"><Navigation/>Open directions</a></Button><Button className="full" variant="outline" disabled={saving} onClick={()=>save('station',{lat:selected.lat,lon:selected.lon,label:selected.name,sourceId:selected.id})}><Bookmark/>{saved.some(i=>i.id===`station:${selected.id}`)?'Saved · update':'Save charger'}</Button>
+    <p className="muted-small">Hours may change. Check the station listing before travelling.</p><Button asChild className="full"><a href={stationLookup(selected)} target="_blank" rel="noreferrer"><Search/>Find station on Google Maps</a></Button><Button asChild className="full" variant="outline"><a href={directions(selected)} target="_blank" rel="noreferrer"><Navigation/>Open directions</a></Button><Button className="full" variant="outline" type="button" onClick={()=>{setDestination({lat:selected.lat,lon:selected.lon,label:selected.name});setWorkspaceTab('trip');toast.info('Selected charger set as trip destination. Open Plan a trip to continue.');document.querySelector('#charger-search')?.scrollIntoView({behavior:'smooth',block:'start'});}}><MapPin/>Use as trip destination</Button><Button className="full" variant="outline" disabled={saving} onClick={()=>save('station',{lat:selected.lat,lon:selected.lon,label:selected.name,sourceId:selected.id})}><Bookmark/>{saved.some(i=>i.id===`station:${selected.id}`)?'Saved · update':'Save charger'}</Button>
     <ExpectedWait key={`queue:${selected.id}:${profile.connector}`} now={hoursClock} availability={stationAvailability.get(selected.id)||null}/>
     {accessToken&&<ChargerHistory key={`history:${selected.id}`} stationId={selected.id} version={reports[selected.id]?.reportedAt} accessToken={accessToken} onPrivateCleared={()=>{void loadAccount();}}/>}
     <ChargingBreakPlanner key={selected.id} station={selected} places={amenities} plan={smartPlan} now={hoursClock} loading={amenitiesLoading} error={amenityError} stale={!!amenityNotice}/>
