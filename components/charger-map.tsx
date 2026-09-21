@@ -8,30 +8,49 @@ import 'leaflet/dist/leaflet.css';
 type MapStyle='road'|'satellite';
 export default function ChargerMap({center,stations,selected,amenities,route,backupRoute,mainId,backupId,riskSections,focusedRiskId,onRiskFocus,availability,onSelect,onSearch,fetchedAt}:{center:Point;stations:Station[];selected:Station|null;amenities:Amenity[];route:RoadRoute|null;backupRoute:RoadRoute|null;mainId?:string;backupId?:string;riskSections:RiskSection[];focusedRiskId:string|null;onRiskFocus:(id:string)=>void;availability:Map<string,AvailabilityInfo>;onSelect:(s:Station)=>void;onSearch:(p:Point)=>void;fetchedAt:string}) {
  const container=useRef<HTMLDivElement>(null), map=useRef<Leaflet.Map|null>(null), L=useRef<typeof Leaflet|null>(null), layer=useRef<Leaflet.LayerGroup|null>(null),initialCenter=useRef(center);
- const baseLayers=useRef<{road:Leaflet.TileLayer|null;satellite:Leaflet.TileLayer|null;labels:Leaflet.TileLayer|null}>({road:null,satellite:null,labels:null});
+ const baseLayers=useRef<{road:Leaflet.TileLayer|null;roadFallback:Leaflet.TileLayer|null;satellite:Leaflet.TileLayer|null;labels:Leaflet.TileLayer|null}>({road:null,roadFallback:null,satellite:null,labels:null});
+ const roadFallbackActive=useRef(false),mapStyleRef=useRef<MapStyle>('road');
  const [ready,setReady]=useState(false),[error,setError]=useState(''),[viewRevision,setViewRevision]=useState(0),[mapStyle,setMapStyle]=useState<MapStyle>('road');
  const visibleBounds=useRef<[number,number][]>([]);
  const choose=useRef(onSelect),focusRisk=useRef(onRiskFocus);
+ useEffect(()=>{mapStyleRef.current=mapStyle;},[mapStyle]);
  useEffect(()=>{choose.current=onSelect;focusRisk.current=onRiskFocus;},[onSelect,onRiskFocus]);
+ const applyMapStyle=(nextStyle:MapStyle)=>{
+  const m=map.current;
+  if(!m)return;
+  const {road,roadFallback,satellite,labels}=baseLayers.current;
+  for(const tile of [road,roadFallback,satellite,labels])if(tile&&m.hasLayer(tile))m.removeLayer(tile);
+  if(nextStyle==='satellite'){satellite?.addTo(m);labels?.addTo(m);return;}
+  const activeRoad=roadFallbackActive.current?roadFallback:road;
+  activeRoad?.addTo(m);
+ };
  useEffect(()=>{let disposed=false;let resize:ResizeObserver|undefined;
   import('leaflet').then(lib=>{if(disposed||!container.current)return;L.current=lib;const first=initialCenter.current;const m=lib.map(container.current,{scrollWheelZoom:false,preferCanvas:true}).setView([first.lat,first.lon],12);map.current=m;
-   const onTileError=()=>setError('Some map tiles could not load. The station list still works.');
-   const road=lib.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:20,keepBuffer:0,updateWhenIdle:true,attribution:'© OpenStreetMap contributors, © CARTO'}).on('tileerror',onTileError);
-   const satellite=lib.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,keepBuffer:0,updateWhenIdle:true,attribution:'Tiles © Esri'}).on('tileerror',onTileError);
-   const labels=lib.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,keepBuffer:0,updateWhenIdle:true,attribution:'Labels © Esri'}).on('tileerror',onTileError);
-   baseLayers.current={road,satellite,labels};
-   road.addTo(m);
+   const road=lib.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:20,keepBuffer:0,updateWhenIdle:true,attribution:'© OpenStreetMap contributors, © CARTO'});
+   const roadFallback=lib.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,keepBuffer:0,updateWhenIdle:true,attribution:'© OpenStreetMap contributors'});
+   const satellite=lib.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,keepBuffer:0,updateWhenIdle:true,attribution:'Tiles © Esri'});
+   const labels=lib.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,keepBuffer:0,updateWhenIdle:true,attribution:'Labels © Esri'});
+   road.on('tileerror',()=>{
+    if(roadFallbackActive.current)return;
+    roadFallbackActive.current=true;
+    setError('Primary map tiles were unavailable. Showing fallback road map.');
+    if(mapStyleRef.current==='road')applyMapStyle('road');
+   });
+   satellite.on('tileerror',()=>{
+    if(mapStyleRef.current!=='satellite')return;
+    setError('Satellite tiles were unavailable on this connection. Showing road map.');
+    setMapStyle('road');
+   });
+   labels.on('tileerror',()=>{if(mapStyleRef.current==='satellite')setError('Some satellite labels could not load.');});
+   baseLayers.current={road,roadFallback,satellite,labels};
+   applyMapStyle('road');
    m.on('zoomend moveend',()=>setViewRevision(v=>v+1));layer.current=lib.layerGroup().addTo(m);resize=new ResizeObserver(()=>m.invalidateSize());resize.observe(container.current);setReady(true);
   }).catch(()=>setError('Map could not load. Use the station list below.'));
-  return()=>{disposed=true;resize?.disconnect();map.current?.remove();map.current=null;baseLayers.current={road:null,satellite:null,labels:null};};
+  return()=>{disposed=true;resize?.disconnect();map.current?.remove();map.current=null;baseLayers.current={road:null,roadFallback:null,satellite:null,labels:null};roadFallbackActive.current=false;};
  },[]);
  useEffect(()=>{
   if(!ready||!map.current)return;
-  const m=map.current;
-  const {road,satellite,labels}=baseLayers.current;
-  for(const tile of [road,satellite,labels])if(tile&&m.hasLayer(tile))m.removeLayer(tile);
-  if(mapStyle==='satellite'){satellite?.addTo(m);labels?.addTo(m);}
-  else road?.addTo(m);
+  applyMapStyle(mapStyle);
  },[ready,mapStyle]);
  useEffect(()=>{if(ready)map.current?.setView([center.lat,center.lon],12);},[ready,center.lat,center.lon]);
  useEffect(()=>{
