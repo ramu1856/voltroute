@@ -280,5 +280,6 @@
 .map-hud-live:before{content:"";width:8px;height:8px;border-radius:999px;background:#59de7d;box-shadow:0 0 0 4px rgba(89,222,125,.18)}
 .map-hud-actions{display:flex;flex-wrap:wrap;gap:6px}
 .map-hud-actions button{min-height:32px;padding:5px 10px;border:1px solid #5b7a67;border-radius:999px;background:#173224;color:#e6f3e8;font-size:12px;cursor:pointer}
+.map-hud-actions button[aria-pressed=true]{background:#25553a;border-color:#8acb9e;color:#eff9f2}
 .map-hud-actions button:disabled{opacity:.55;cursor:not-allowed}
 @media(max-width:720px){.map-hud{left:8px;right:8px;max-width:none}}
