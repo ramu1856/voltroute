@@ -43,7 +43,7 @@ type DriverReport={sourceId:string;stationName:string;status:'working'|'busy'|'b
 type Saved = {id:string;kind:'profile'|'station'|'trip'|'report';payload:Profile | (Point&{sourceId:string}) | TripInput | DriverReport;updated:number};
 type NavigationLocationState={lat:number;lon:number;accuracyMeters:number|null;heading:number|null;speedMph:number|null;recordedAt:number};
 function hasRenderableRoute(route:RoadRoute|null|undefined):route is RoadRoute{
- return !!route&&Array.isArray(route.coordinates)&&route.coordinates.length>1&&Number.isFinite(route.miles)&&route.miles>0;
+ return !!route&&Array.isArray(route.coordinates)&&route.coordinates.length>1&&route.coordinates.every(point=>Array.isArray(point)&&point.length===2&&Number.isFinite(point[0])&&Number.isFinite(point[1]));
 }
 async function api<T>(path:string,init?:RequestInit,accessToken?:string):Promise<T>{const headers=new Headers(init?.headers);if(accessToken)headers.set('Authorization',`Bearer ${accessToken}`);const response=await fetch(path,{...init,headers});const data=await response.json() as T & {error?:string};if(!response.ok)throw new Error(data.error || 'Something went wrong. Please try again.');return data;}
 function directions(p:{lat:number;lon:number},walking=false){return `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}&travelmode=${walking?'walking':'driving'}`;}
@@ -198,6 +198,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const requestId=useRef(0),routeId=useRef(0),liveId=useRef(0);
  const navigationWatchIdRef=useRef<number|null>(null);
  const lastNavigationSampleRef=useRef<{lat:number;lon:number;capturedAt:number}|null>(null);
+ const selectedRoadStationIdRef=useRef<string|null>(null),directionsRequestIdRef=useRef(0);
  const stationRequest=useRef<AbortController|null>(null),loadStationsRef=useRef(loadStations),loadAccountRef=useRef(loadAccount),selectedRef=useRef<Station|null>(null),refreshLiveRef=useRef<(station:Station)=>Promise<void>>(async()=>{});
  const stationSnapshotCache=useRef<Map<string,DirectorySnapshot<Station[]>>>(new Map());
  useEffect(()=>()=>stationRequest.current?.abort(),[]);
@@ -259,7 +260,7 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
  useEffect(()=>{const station=selectedRef.current;if(!station)return;const timer=window.setTimeout(()=>{void refreshLiveRef.current(station);},250);return()=>window.clearTimeout(timer);},[selectedId,profile.connector]);
  useEffect(()=>{const controller=new AbortController();void Promise.resolve().then(async()=>{if(controller.signal.aborted)return;setAmenities([]);setAmenityError('');setAmenityNotice('');setAmenityFetchedAt('');if(!selectedId){setAmenitiesLoading(false);return;}setAmenitiesLoading(true);try{const r=await api<DirectorySnapshot<Amenity[]>>(`/api/explore?action=amenities&lat=${selectedLat}&lon=${selectedLon}`,{signal:controller.signal});if(!controller.signal.aborted){setAmenities(r.data);setAmenityNotice(r.notice||'');setAmenityFetchedAt(r.fetchedAt);}}catch(e){if(!controller.signal.aborted)setAmenityError((e as Error).message);}finally{if(!controller.signal.aborted)setAmenitiesLoading(false);}});return()=>controller.abort();
  },[selectedId,selectedLat,selectedLon,amenityRetry]);
- useEffect(()=>{const controller=new AbortController();void Promise.resolve().then(async()=>{if(!selectedId||selectedLat===undefined||selectedLon===undefined){setSelectedRoad(null);setSelectedRoadBusy(false);return;}setSelectedRoad(null);setSelectedRoadBusy(true);try{const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${origin.lat}&lon=${origin.lon}&toLat=${selectedLat}&toLon=${selectedLon}`,{signal:controller.signal});if(!controller.signal.aborted)setSelectedRoad({...r.data,fetchedAt:r.fetchedAt});}catch{if(!controller.signal.aborted)setSelectedRoad(null);}finally{if(!controller.signal.aborted)setSelectedRoadBusy(false);}});return()=>controller.abort();},[selectedId,selectedLat,selectedLon,origin.lat,origin.lon]);
+ useEffect(()=>{const controller=new AbortController();void Promise.resolve().then(async()=>{if(!selectedId||selectedLat===undefined||selectedLon===undefined){selectedRoadStationIdRef.current=null;setSelectedRoad(null);setSelectedRoadBusy(false);return;}setSelectedRoad(null);setSelectedRoadBusy(true);try{const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${origin.lat}&lon=${origin.lon}&toLat=${selectedLat}&toLon=${selectedLon}`,{signal:controller.signal});if(!controller.signal.aborted){const candidate={...r.data,fetchedAt:r.fetchedAt};if(hasRenderableRoute(candidate)){selectedRoadStationIdRef.current=selectedId;setSelectedRoad(candidate);}else{selectedRoadStationIdRef.current=null;setSelectedRoad(null);}}}catch{if(!controller.signal.aborted){selectedRoadStationIdRef.current=null;setSelectedRoad(null);}}finally{if(!controller.signal.aborted)setSelectedRoadBusy(false);}});return()=>controller.abort();},[selectedId,selectedLat,selectedLon,origin.lat,origin.lon]);
 
  useEffect(()=>{
   let disposed=false;
@@ -352,14 +353,15 @@ useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.cu
  function recenterNavigationMap(){
   setNavigationRecenterToken(token=>token+1);
  }
- async function loadRoadToStation(station:Station){
-  if(hasRenderableRoute(selectedRoad)&&selected?.id===station.id)return selectedRoad;
+ async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean}){
+  if(!options?.forceFresh&&hasRenderableRoute(selectedRoad)&&selectedRoadStationIdRef.current===station.id)return selectedRoad;
   let lastError:Error|null=null;
   for(let attempt=0;attempt<2;attempt++){
    try{
     const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${origin.lat}&lon=${origin.lon}&toLat=${station.lat}&toLon=${station.lon}`);
     const routeToStation={...r.data,fetchedAt:r.fetchedAt};
     if(!hasRenderableRoute(routeToStation))throw new Error('Route geometry is incomplete for this destination.');
+    selectedRoadStationIdRef.current=station.id;
     setSelectedRoad(routeToStation);
     return routeToStation;
    }catch(error){
@@ -369,16 +371,30 @@ useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.cu
   throw lastError||new Error('Route could not be loaded right now.');
  }
  async function showDirectionsToStation(station:Station){
+  const directionsRequestId=++directionsRequestIdRef.current;
+  const wasNavigating=!!navigationTargetId;
   setSelected(station);
   setExpandedChargerId(station.id);
+  selectedRoadStationIdRef.current=null;
+  setSelectedRoad(null);
+  setMapRouteOverride(null);
+  setPinnedMapRoute(null);
+  setNavigationRoute(null);
   setSelectedRoadBusy(true);
   try{
-   const routeToStation=await loadRoadToStation(station);
+   const routeToStation=await loadRoadToStation(station,{forceFresh:true});
+   if(directionsRequestId!==directionsRequestIdRef.current)return;
    showRouteDirectionsOnMap(routeToStation,'Directions are now shown on the map.');
+   if(wasNavigating){
+    setNavigationRoute(routeToStation);
+    setNavigationTargetId(station.id);
+    setNavigationDistanceMiles(routeToStation.miles);
+    setNavigationEtaMinutes(Math.round(routeToStation.minutes));
+   }
   }catch(e){
-   toast.error((e as Error).message||'Directions could not be loaded right now.');
+   if(directionsRequestId===directionsRequestIdRef.current)toast.error((e as Error).message||'Directions could not be loaded right now.');
   }finally{
-   setSelectedRoadBusy(false);
+   if(directionsRequestId===directionsRequestIdRef.current)setSelectedRoadBusy(false);
   }
  }
  async function showDirectionsToSelected(){
