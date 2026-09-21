@@ -320,6 +320,7 @@
 .navigation-top-card{top:8px;width:min(210px,calc(100% - 20px));padding:5px 7px;border-radius:8px;background:rgba(12,40,34,.9);border:1px solid #2f6d5a;box-shadow:0 4px 12px rgba(0,0,0,.3);color:#eefcf5}
 .navigation-top-eyebrow{display:none}
 .navigation-top-card h3{margin:0;font-size:.82rem;line-height:1.18;font-weight:700}
+.route-loading-badge{display:inline-flex;align-items:center;max-width:max-content;margin-top:3px;padding:1px 6px;border-radius:999px;border:1px solid #4f8f77;background:rgba(18,52,43,.78);color:#c5eddc;font-size:.56rem;letter-spacing:.01em;line-height:1.15}
 .navigation-top-card p{margin:1px 0 0;font-size:.64rem;line-height:1.2;color:#c3ebdc}
 .navigation-bottom-card{bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;width:min(calc(100% - 20px),420px);padding:5px 7px;border-radius:8px;background:rgba(7,24,20,.92);border:1px solid #325347;box-shadow:0 -4px 12px rgba(0,0,0,.24);color:#ecfaf1}
 .navigation-bottom-primary{display:grid;gap:0;min-width:0}
@@ -334,6 +335,7 @@
  .navigation-top-card,.navigation-bottom-card{left:6px}
  .navigation-top-card{width:min(186px,calc(100% - 12px));padding:4px 6px}
  .navigation-top-card h3{font-size:.76rem}
+ .route-loading-badge{margin-top:2px;padding:1px 5px;font-size:.52rem}
  .navigation-top-card p{font-size:.6rem}
  .navigation-bottom-card{width:min(calc(100% - 12px),390px);padding:4px 6px}
  .navigation-bottom-primary strong{font-size:.9rem}
