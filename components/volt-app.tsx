@@ -194,6 +194,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled)setFocusedRisk(null);});return()=>{cancelled=true;};},[smartPlan]);
  const requestId=useRef(0),routeId=useRef(0),liveId=useRef(0);
  const navigationWatchIdRef=useRef<number|null>(null);
+ const lastNavigationSampleRef=useRef<{lat:number;lon:number;capturedAt:number}|null>(null);
  const stationRequest=useRef<AbortController|null>(null),loadStationsRef=useRef(loadStations),loadAccountRef=useRef(loadAccount),selectedRef=useRef<Station|null>(null),refreshLiveRef=useRef<(station:Station)=>Promise<void>>(async()=>{});
  const stationSnapshotCache=useRef<Map<string,DirectorySnapshot<Station[]>>>(new Map());
  useEffect(()=>()=>stationRequest.current?.abort(),[]);
@@ -277,15 +278,24 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
   clearWatch();
   navigationWatchIdRef.current=navigator.geolocation.watchPosition(position=>{
    if(disposed)return;
+   const nextLat=Number(position.coords.latitude.toFixed(6));
+   const nextLon=Number(position.coords.longitude.toFixed(6));
+   const now=Date.now();
+   const lastSample=lastNavigationSampleRef.current;
+   if(lastSample){
+    const movedMiles=miles({lat:lastSample.lat,lon:lastSample.lon},{lat:nextLat,lon:nextLon});
+    if(now-lastSample.capturedAt<900&&movedMiles<0.008)return;
+   }
+   lastNavigationSampleRef.current={lat:nextLat,lon:nextLon,capturedAt:now};
    const heading=Number.isFinite(position.coords.heading)?position.coords.heading:null;
    const speedMph=Number.isFinite(position.coords.speed)?Number(position.coords.speed)*2.23694:null;
    setNavigationLocation({
-    lat:Number(position.coords.latitude.toFixed(6)),
-    lon:Number(position.coords.longitude.toFixed(6)),
+    lat:nextLat,
+    lon:nextLon,
     accuracyMeters:Number.isFinite(position.coords.accuracy)?position.coords.accuracy:null,
     heading:heading===null?null:Number(heading.toFixed(1)),
     speedMph:speedMph===null?null:Number(speedMph.toFixed(1)),
-    recordedAt:Date.now(),
+    recordedAt:now,
    });
    setNavigationLocationError('');
   },error=>{
@@ -293,7 +303,7 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
    const message=error.message||'Allow location access to keep live navigation centered.';
    setNavigationLocationError(message);
   },{enableHighAccuracy:true,maximumAge:3000,timeout:20000});
-  return()=>{disposed=true;clearWatch();};
+  return()=>{disposed=true;clearWatch();lastNavigationSampleRef.current=null;};
  },[navigationTargetId]);
 
 useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.current++;setRoad(null);setSmartPlan(null);setTripSnapshot(null);setRouteOnlyMode(false);setNavigationTargetId(null);setNavigationDistanceMiles(null);setNavigationEtaMinutes(null);setNavigationLocation(null);setNavigationLocationError('');setRouteError('');setRouteBusy(false);setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);routeStationsSnapshot.current=null;}});return()=>{cancelled=true;};},[origin,destination,profile,battery]);

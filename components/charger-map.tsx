@@ -7,9 +7,9 @@ import { riskStyles, type RiskSection } from '@/lib/trip-assessment';
 import 'leaflet/dist/leaflet.css';
 type MapStyle='road'|'satellite';
 export default function ChargerMap({center,stations,selected,amenities,route,routeFocusToken,navigationMode,navigationLocation,backupRoute,mainId,backupId,riskSections,focusedRiskId,onRiskFocus,availability,onSelect,onSearch,fetchedAt}:{center:Point;stations:Station[];selected:Station|null;amenities:Amenity[];route:RoadRoute|null;routeFocusToken:number;navigationMode:boolean;navigationLocation:{lat:number;lon:number;accuracyMeters:number|null;heading:number|null}|null;backupRoute:RoadRoute|null;mainId?:string;backupId?:string;riskSections:RiskSection[];focusedRiskId:string|null;onRiskFocus:(id:string)=>void;availability:Map<string,AvailabilityInfo>;onSelect:(s:Station)=>void;onSearch:(p:Point)=>void;fetchedAt:string}) {
- const container=useRef<HTMLDivElement>(null), map=useRef<Leaflet.Map|null>(null), L=useRef<typeof Leaflet|null>(null), layer=useRef<Leaflet.LayerGroup|null>(null),initialCenter=useRef(center);
+ const container=useRef<HTMLDivElement>(null), map=useRef<Leaflet.Map|null>(null), L=useRef<typeof Leaflet|null>(null), layer=useRef<Leaflet.LayerGroup|null>(null),navigationLayer=useRef<Leaflet.LayerGroup|null>(null),initialCenter=useRef(center);
  const baseLayers=useRef<{road:Leaflet.TileLayer|null;roadFallback:Leaflet.TileLayer|null;satellite:Leaflet.TileLayer|null;labels:Leaflet.TileLayer|null}>({road:null,roadFallback:null,satellite:null,labels:null});
- const roadFallbackActive=useRef(false),mapStyleRef=useRef<MapStyle>('road');
+ const roadFallbackActive=useRef(false),mapStyleRef=useRef<MapStyle>('road'),navigationFitTokenRef=useRef(-1);
  const [ready,setReady]=useState(false),[error,setError]=useState(''),[viewRevision,setViewRevision]=useState(0),[mapStyle,setMapStyle]=useState<MapStyle>('road');
  const visibleBounds=useRef<[number,number][]>([]);
  const choose=useRef(onSelect),focusRisk=useRef(onRiskFocus);
@@ -44,9 +44,9 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
    labels.on('tileerror',()=>{if(mapStyleRef.current==='satellite')setError('Some satellite labels could not load.');});
    baseLayers.current={road,roadFallback,satellite,labels};
    applyMapStyle('road');
-   m.on('zoomend moveend',()=>setViewRevision(v=>v+1));layer.current=lib.layerGroup().addTo(m);resize=new ResizeObserver(()=>m.invalidateSize());resize.observe(container.current);setReady(true);
+   m.on('zoomend moveend',()=>setViewRevision(v=>v+1));layer.current=lib.layerGroup().addTo(m);navigationLayer.current=lib.layerGroup().addTo(m);resize=new ResizeObserver(()=>m.invalidateSize());resize.observe(container.current);setReady(true);
   }).catch(()=>setError('Map could not load. Use the station list below.'));
-  return()=>{disposed=true;resize?.disconnect();map.current?.remove();map.current=null;baseLayers.current={road:null,roadFallback:null,satellite:null,labels:null};roadFallbackActive.current=false;};
+  return()=>{disposed=true;resize?.disconnect();map.current?.remove();map.current=null;layer.current=null;navigationLayer.current=null;baseLayers.current={road:null,roadFallback:null,satellite:null,labels:null};roadFallbackActive.current=false;navigationFitTokenRef.current=-1;};
  },[]);
  useEffect(()=>{
   if(!ready||!map.current)return;
@@ -67,18 +67,6 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
     const [endLon,endLat]=route.coordinates[route.coordinates.length-1];
     add(startLat,startLon,'Trip start','#5b8def',6);
     add(endLat,endLon,'Trip destination','#5b8def',8);
-   }
-  }
-  if(navigationMode&&navigationLocation){
-   if(navigationLocation.accuracyMeters&&navigationLocation.accuracyMeters>0){
-    lib.circle([navigationLocation.lat,navigationLocation.lon],{radius:Math.min(220,navigationLocation.accuracyMeters),color:'#7ab3ff',fillColor:'#7ab3ff',fillOpacity:.15,weight:1}).addTo(layer.current);
-   }
-   lib.circleMarker([navigationLocation.lat,navigationLocation.lon],{radius:8,color:'#fff',weight:3,fillColor:'#2f6bff',fillOpacity:1}).addTo(layer.current);
-   if(navigationLocation.heading!==null){
-    const headingRadians=navigationLocation.heading*Math.PI/180;
-    const tipLat=navigationLocation.lat+(Math.cos(headingRadians)*0.0014);
-    const tipLon=navigationLocation.lon+(Math.sin(headingRadians)*0.0014);
-    lib.polyline([[navigationLocation.lat,navigationLocation.lon],[tipLat,tipLon]],{color:'#2f6bff',weight:4,lineCap:'round'}).addTo(layer.current);
    }
   }
   if(backupRoute){
@@ -121,7 +109,23 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
   for(const s of pinned)drawStation(s);
   for(const p of amenities)add(p.lat,p.lon,`${p.kind==='food'?'Food':p.kind==='shopping'?'Shopping':'Restroom'}: ${p.name}`,p.kind==='food'?'#f5a65b':p.kind==='shopping'?'#f6d66d':'#9288ff',6);
   visibleBounds.current=bounds;
- },[ready,viewRevision,center,stations,selected,amenities,route,navigationMode,navigationLocation,backupRoute,mainId,backupId,availability,riskSections,focusedRiskId]);
+ },[ready,viewRevision,center,stations,selected,amenities,route,navigationMode,backupRoute,mainId,backupId,availability,riskSections,focusedRiskId]);
+ useEffect(()=>{
+  if(!ready||!L.current||!navigationLayer.current)return;
+  const lib=L.current;
+  navigationLayer.current.clearLayers();
+  if(!navigationMode||!navigationLocation)return;
+  if(navigationLocation.accuracyMeters&&navigationLocation.accuracyMeters>0){
+   lib.circle([navigationLocation.lat,navigationLocation.lon],{radius:Math.min(220,navigationLocation.accuracyMeters),color:'#7ab3ff',fillColor:'#7ab3ff',fillOpacity:.15,weight:1}).addTo(navigationLayer.current);
+  }
+  lib.circleMarker([navigationLocation.lat,navigationLocation.lon],{radius:8,color:'#fff',weight:3,fillColor:'#2f6bff',fillOpacity:1}).addTo(navigationLayer.current);
+  if(navigationLocation.heading!==null){
+   const headingRadians=navigationLocation.heading*Math.PI/180;
+   const tipLat=navigationLocation.lat+(Math.cos(headingRadians)*0.0014);
+   const tipLon=navigationLocation.lon+(Math.sin(headingRadians)*0.0014);
+   lib.polyline([[navigationLocation.lat,navigationLocation.lon],[tipLat,tipLon]],{color:'#2f6bff',weight:4,lineCap:'round'}).addTo(navigationLayer.current);
+  }
+ },[ready,navigationMode,navigationLocation,navigationLocation?.lat,navigationLocation?.lon,navigationLocation?.accuracyMeters,navigationLocation?.heading]);
  useEffect(()=>{const focused=riskSections.find(section=>section.id===focusedRiskId);const coordinates=focused?.coordinates||[...(route?.coordinates||[]),...(backupRoute?.coordinates||[])];if(ready&&coordinates.length)map.current?.fitBounds(coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[35,35],maxZoom:14});},[ready,route,backupRoute,focusedRiskId,riskSections]);
  useEffect(()=>{
   if(!ready||!route?.coordinates.length)return;
@@ -129,10 +133,15 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
  },[ready,route,routeFocusToken]);
  useEffect(()=>{
   if(!ready||!navigationMode||!route?.coordinates.length||!map.current)return;
-  const allPoints=route.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]);
-  if(navigationLocation)allPoints.push([navigationLocation.lat,navigationLocation.lon]);
-  map.current.fitBounds(allPoints,{padding:[34,34],maxZoom:14});
- },[ready,navigationMode,route,navigationLocation,navigationLocation?.lat,navigationLocation?.lon]);
+  if(navigationFitTokenRef.current===routeFocusToken)return;
+  map.current.fitBounds(route.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[34,34],maxZoom:14});
+  navigationFitTokenRef.current=routeFocusToken;
+ },[ready,navigationMode,route,routeFocusToken]);
+ useEffect(()=>{
+  if(navigationMode)return;
+  navigationFitTokenRef.current=-1;
+  navigationLayer.current?.clearLayers();
+ },[navigationMode]);
  return <div className="map-panel-shell">
   {!navigationMode&&<div className="map-hud map-hud-inline" aria-live="polite">
    <span className="map-hud-live">Live map</span>
