@@ -313,4 +313,8 @@
 .navigation-mode-banner{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid #5c7a66;border-radius:10px;background:#173323;margin:10px 14px}
 .navigation-mode-banner h3{margin:2px 0 4px;font-size:1.02rem;color:#ebf8ef}
 .navigation-mode-banner p{margin:0;font-size:.83rem;line-height:1.5;color:#c2d4c8}
+.navigation-mode-actions{display:flex;gap:8px;flex-wrap:wrap}
+.vr-workspace.route-only{grid-template-columns:minmax(0,1fr)}
+.vr-workspace.route-only .vr-controls,.vr-workspace.route-only .vr-details{display:none}
+.vr-workspace.route-only .vr-main{grid-column:1/-1}
 @media(max-width:720px){.charger-card-stats,.charger-card-actions{grid-template-columns:1fr}}
