@@ -1,7 +1,7 @@
-import Link from 'next/link';
+import { WORKER_SITE_URL } from '@/lib/site-config';
 export const metadata={title:'Privacy Policy | VoltRoutes'};
 export default function Privacy(){
- return <main className="legal-page"><div className="legal-shell"><Link href="/">← Back to VoltRoutes</Link><h1>Privacy Policy</h1><p>Last updated: September 19, 2026</p>
+ return <main className="legal-page"><div className="legal-shell"><a href={WORKER_SITE_URL}>← Back to VoltRoutes</a><h1>Privacy Policy</h1><p>Last updated: September 19, 2026</p>
  <h2>What VoltRoutes collects</h2><p>VoltRoutes may process location searches, trip inputs, EV profile details, saved chargers and trips, account information, and station reports you choose to submit.</p>
  <h2>Location</h2><p>Your precise device location is used only when you choose a location feature such as Near me. Search locations and route coordinates may be sent to map, routing, charging-data, or place providers needed to answer your request.</p>
  <h2>Accounts and saved data</h2><p>If you create an account, saved items and reports are associated with your account so they can be available across sessions. Public or shared community observations are clearly identified before you submit them.</p>

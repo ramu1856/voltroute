@@ -1,7 +1,7 @@
-import Link from 'next/link';
+import { WORKER_SITE_URL } from '@/lib/site-config';
 export const metadata={title:'About VoltRoutes'};
 export default function About(){
- return <main className="legal-page"><div className="legal-shell"><Link href="/">← Back to VoltRoutes</Link><h1>About VoltRoutes</h1>
+ return <main className="legal-page"><div className="legal-shell"><a href={WORKER_SITE_URL}>← Back to VoltRoutes</a><h1>About VoltRoutes</h1>
  <p>VoltRoutes is an EV trip planner focused on reducing charging uncertainty. The product combines road routing, charger discovery, battery estimates, backup-stop planning, and clear data-confidence labels.</p>
  <h2>What makes it different</h2><p>No-Stranding Mode checks a separate backup when possible. Trip Safety Score and Route Risk Map explain what is known, what needs review, and where the plan still has gaps. VoltRoutes keeps unknown availability and prices unknown instead of filling them with guesses.</p>
  <h2>How VoltRoutes compares to common EV tools</h2>
