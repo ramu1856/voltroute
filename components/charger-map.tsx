@@ -6,7 +6,7 @@ import { evidenceTime, type AvailabilityInfo } from '@/lib/station-evidence';
 import { riskStyles, type RiskSection } from '@/lib/trip-assessment';
 import 'leaflet/dist/leaflet.css';
 type MapStyle='road'|'satellite';
-export default function ChargerMap({center,stations,selected,amenities,route,backupRoute,mainId,backupId,riskSections,focusedRiskId,onRiskFocus,availability,onSelect,onSearch,fetchedAt}:{center:Point;stations:Station[];selected:Station|null;amenities:Amenity[];route:RoadRoute|null;backupRoute:RoadRoute|null;mainId?:string;backupId?:string;riskSections:RiskSection[];focusedRiskId:string|null;onRiskFocus:(id:string)=>void;availability:Map<string,AvailabilityInfo>;onSelect:(s:Station)=>void;onSearch:(p:Point)=>void;fetchedAt:string}) {
+export default function ChargerMap({center,stations,selected,amenities,route,routeFocusToken,backupRoute,mainId,backupId,riskSections,focusedRiskId,onRiskFocus,availability,onSelect,onSearch,fetchedAt}:{center:Point;stations:Station[];selected:Station|null;amenities:Amenity[];route:RoadRoute|null;routeFocusToken:number;backupRoute:RoadRoute|null;mainId?:string;backupId?:string;riskSections:RiskSection[];focusedRiskId:string|null;onRiskFocus:(id:string)=>void;availability:Map<string,AvailabilityInfo>;onSelect:(s:Station)=>void;onSearch:(p:Point)=>void;fetchedAt:string}) {
  const container=useRef<HTMLDivElement>(null), map=useRef<Leaflet.Map|null>(null), L=useRef<typeof Leaflet|null>(null), layer=useRef<Leaflet.LayerGroup|null>(null),initialCenter=useRef(center);
  const baseLayers=useRef<{road:Leaflet.TileLayer|null;roadFallback:Leaflet.TileLayer|null;satellite:Leaflet.TileLayer|null;labels:Leaflet.TileLayer|null}>({road:null,roadFallback:null,satellite:null,labels:null});
  const roadFallbackActive=useRef(false),mapStyleRef=useRef<MapStyle>('road');
@@ -109,6 +109,10 @@ export default function ChargerMap({center,stations,selected,amenities,route,bac
   visibleBounds.current=bounds;
  },[ready,viewRevision,center,stations,selected,amenities,route,backupRoute,mainId,backupId,availability,riskSections,focusedRiskId]);
  useEffect(()=>{const focused=riskSections.find(section=>section.id===focusedRiskId);const coordinates=focused?.coordinates||[...(route?.coordinates||[]),...(backupRoute?.coordinates||[])];if(ready&&coordinates.length)map.current?.fitBounds(coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[35,35],maxZoom:14});},[ready,route,backupRoute,focusedRiskId,riskSections]);
+ useEffect(()=>{
+  if(!ready||!route?.coordinates.length)return;
+  map.current?.fitBounds(route.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[35,35],maxZoom:14});
+ },[ready,route,routeFocusToken]);
  return <div className="map-panel-shell">
   <div className="map-hud map-hud-inline" aria-live="polite">
    <span className="map-hud-live">Live map</span>
