@@ -166,7 +166,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const [routeStationsBusy,setRouteStationsBusy]=useState(false),[routeStationsError,setRouteStationsError]=useState(''),[routeStationsMode,setRouteStationsMode]=useState(false);
  const [filter,setFilter]=useState(''),[fast,setFast]=useState(false),[match,setMatch]=useState(false),[freeOnly,setFreeOnly]=useState(false),[radius,setRadius]=useState('160934');
  const [road,setRoad]=useState<RoadRoute|null>(null),[selectedRoad,setSelectedRoad]=useState<RoadRoute|null>(null),[selectedRoadBusy,setSelectedRoadBusy]=useState(false),[switchingRoute,setSwitchingRoute]=useState(false),[routeBusy,setRouteBusy]=useState(false),[routeError,setRouteError]=useState(''),[tripSnapshot,setTripSnapshot]=useState<TripInput|null>(null),[mapRouteOverride,setMapRouteOverride]=useState<RoadRoute|null>(null),[navigationRoute,setNavigationRoute]=useState<RoadRoute|null>(null),[pinnedMapRoute,setPinnedMapRoute]=useState<RoadRoute|null>(null),[mapRouteFocusToken,setMapRouteFocusToken]=useState(0),[navigationRecenterToken,setNavigationRecenterToken]=useState(0);
- const [expandedChargerId,setExpandedChargerId]=useState<string|null>(null),[activeConnectorByCharger,setActiveConnectorByCharger]=useState<Record<string,string>>({}),[routeOnlyMode,setRouteOnlyMode]=useState(false),[startingNavigation,setStartingNavigation]=useState(false),[navigationTargetId,setNavigationTargetId]=useState<string|null>(null),[navigationDistanceMiles,setNavigationDistanceMiles]=useState<number|null>(null),[navigationEtaMinutes,setNavigationEtaMinutes]=useState<number|null>(null);
+ const [expandedChargerId,setExpandedChargerId]=useState<string|null>(null),[activeConnectorByCharger,setActiveConnectorByCharger]=useState<Record<string,string>>({}),[routeOnlyMode,setRouteOnlyMode]=useState(false),[startingNavigation,setStartingNavigation]=useState(false),[navigationTargetId,setNavigationTargetId]=useState<string|null>(null),[navigationRouteKey,setNavigationRouteKey]=useState<string|null>(null),[navigationDistanceMiles,setNavigationDistanceMiles]=useState<number|null>(null),[navigationEtaMinutes,setNavigationEtaMinutes]=useState<number|null>(null);
  const [navigationLocation,setNavigationLocation]=useState<NavigationLocationState|null>(null),[navigationLocationError,setNavigationLocationError]=useState('');
  const [smartPlan,setSmartPlan]=useState<SmartStopResult|null>(null);
  const [showRisk,setShowRisk]=useState(true),[focusedRisk,setFocusedRisk]=useState<string|null>(null);
@@ -317,7 +317,7 @@ useEffect(()=>{const controller=new AbortController();void Promise.resolve().the
   return()=>{disposed=true;clearWatch();lastNavigationSampleRef.current=null;};
  },[navigationTargetId]);
 
-useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.current++;routeActionRequestIdRef.current++;setRoad(null);setSmartPlan(null);setTripSnapshot(null);setRouteOnlyMode(false);setNavigationTargetId(null);setNavigationDistanceMiles(null);setNavigationEtaMinutes(null);setNavigationLocation(null);setNavigationLocationError('');setSwitchingRoute(false);setStartingNavigation(false);selectedRoadStationIdRef.current=null;selectedRoadSignatureRef.current=null;setRouteError('');setRouteBusy(false);setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);routeStationsSnapshot.current=null;}});return()=>{cancelled=true;};},[origin,destination,profile,battery]);
+useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.current++;routeActionRequestIdRef.current++;setRoad(null);setSmartPlan(null);setTripSnapshot(null);setRouteOnlyMode(false);setNavigationTargetId(null);setNavigationRouteKey(null);setNavigationDistanceMiles(null);setNavigationEtaMinutes(null);setNavigationLocation(null);setNavigationLocationError('');setSwitchingRoute(false);setStartingNavigation(false);selectedRoadStationIdRef.current=null;selectedRoadSignatureRef.current=null;setRouteError('');setRouteBusy(false);setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);routeStationsSnapshot.current=null;}});return()=>{cancelled=true;};},[origin,destination,profile,battery]);
  useEffect(()=>{if(!smartPlan||!isSmartStopExpired(smartPlan,currentTime))return;let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSmartPlan(null);});return()=>{cancelled=true;};},[smartPlan,currentTime]);
  useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSmartPlan(null);});return()=>{cancelled=true;};},[reports,enteredRates]);
  useEffect(()=>{if(!((selected&&!visible.some(s=>s.id===selected.id))||(!selected&&visible.length)))return;let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSelected(visible[0]||null);});return()=>{cancelled=true;};},[visible,selected]);
@@ -399,7 +399,10 @@ async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean;p
   setNavigationRoute(null);
   setNavigationDistanceMiles(null);
   setNavigationEtaMinutes(null);
-  if(wasNavigating)setNavigationTargetId(station.id);
+  if(wasNavigating){
+   setNavigationTargetId(station.id);
+   setNavigationRouteKey(`station:${station.id}:${routeActionId}`);
+  }
   setSwitchingRoute(true);
   setSelectedRoadBusy(true);
   try{
@@ -436,6 +439,7 @@ async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean;p
     setRoad(routeForNavigation);
    }
    if(routeActionId!==routeActionRequestIdRef.current)return;
+   setNavigationRouteKey(`trip:${routeActionId}`);
    showRouteDirectionsOnMap(routeForNavigation);
    setNavigationRoute(routeForNavigation);
    setPinnedMapRoute(routeForNavigation);
@@ -454,6 +458,7 @@ async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean;p
   setSelected(station);
   setExpandedChargerId(station.id);
   setNavigationTargetId(station.id);
+  setNavigationRouteKey(`station:${station.id}:${routeActionId}`);
   selectedRoadStationIdRef.current=null;
   selectedRoadSignatureRef.current=null;
   setSelectedRoad(null);
@@ -493,6 +498,7 @@ async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean;p
   setNavigationRoute(null);
   setPinnedMapRoute(null);
   setNavigationTargetId(null);
+  setNavigationRouteKey(null);
   setNavigationDistanceMiles(null);
   setNavigationEtaMinutes(null);
   setNavigationLocation(null);
@@ -769,7 +775,7 @@ const activeMapRoute=navigationModeActive?(navigationRoute||null):(mapRouteOverr
   <section id="charger-map" className={`vr-main${navigationModeActive?' is-navigation-mode':''}`} aria-label="Charger map and trip results" tabIndex={0}>{!navigationModeActive&&<div className="vr-map-tools"><label className="station-search"><Search size={18}/><input aria-label="Filter loaded stations" placeholder="Filter station name or network" value={filter} onChange={e=>setFilter(e.target.value)}/></label><label className="vr-toggle"><Switch checked={fast} onCheckedChange={setFast}/>100+ kW</label><label className="vr-toggle"><Switch checked={match} onCheckedChange={setMatch}/>My connector</label><label className="vr-toggle"><Switch checked={freeOnly} onCheckedChange={setFreeOnly}/>Listed as free</label><label className="vr-toggle"><Switch checked={openNow} onCheckedChange={setOpenNow}/>Open now</label><label className="vr-toggle"><Switch checked={allDay} onCheckedChange={setAllDay}/>24/7</label><p className="hours-filter-note">Opening-hours filters use listed schedules in station local time. They do not indicate free charging ports.</p></div>}
     {!routeOnlyMode&&<ChargeSessionAssistant station={selected} vehicleName={profile.name} enteredRate={selected?enteredRates[selected.id]||'':''}/>}
     <div className={`navigation-map-shell${navigationModeActive?' is-active':''}`}>
-    <ChargerMap availability={stationAvailability} center={center} stations={mapStations} selected={mapSelected} amenities={mapAmenities} route={activeMapRoute} routeFocusToken={mapRouteFocusToken} navigationRecenterToken={navigationRecenterToken} navigationRouteKey={navigationTargetId} navigationMode={navigationModeActive} navigationLocation={navigationLocation} backupRoute={routeOnlyMode?null:smartPlan?.selected?.backup?.route||null} mainId={routeOnlyMode?undefined:smartPlan?.selected?.station.id} backupId={routeOnlyMode?undefined:smartPlan?.selected?.backup?.station.id} riskSections={mapRiskSections} focusedRiskId={focusedRisk} onRiskFocus={id=>setFocusedRisk(current=>current===id?null:id)} onSelect={setSelected} onSearch={p=>loadStations(p)} fetchedAt={fetchedAt}/>
+    <ChargerMap availability={stationAvailability} center={center} stations={mapStations} selected={mapSelected} amenities={mapAmenities} route={activeMapRoute} routeFocusToken={mapRouteFocusToken} navigationRecenterToken={navigationRecenterToken} navigationRouteKey={navigationRouteKey||navigationTargetId} navigationMode={navigationModeActive} navigationLocation={navigationLocation} backupRoute={routeOnlyMode?null:smartPlan?.selected?.backup?.route||null} mainId={routeOnlyMode?undefined:smartPlan?.selected?.station.id} backupId={routeOnlyMode?undefined:smartPlan?.selected?.backup?.station.id} riskSections={mapRiskSections} focusedRiskId={focusedRisk} onRiskFocus={id=>setFocusedRisk(current=>current===id?null:id)} onSelect={setSelected} onSearch={p=>loadStations(p)} fetchedAt={fetchedAt}/>
     {navigationModeActive&&<section className="navigation-top-card" role="status" aria-live="polite"><h3>{navigationSummary?.turnLabel||'Continue on route'}</h3>{switchingRoute&&<span className="route-loading-badge">Loading new route…</span>}<p>{navigationSummary?`${formatTravelDistance(navigationSummary.remainingMiles)} remaining · ${navigationSummary.headingLabel}`:'Acquiring route progress…'}{navigationLocation?.speedMph!=null?` · ${navigationLocation.speedMph.toFixed(0)} mph`:''}</p></section>}
     {navigationModeActive&&<section className="navigation-bottom-card" role="status" aria-live="polite"><div className="navigation-bottom-primary"><strong>{Math.max(1,Math.round(navigationSummary?.remainingMinutes??navigationEtaMinutes??activeMapRoute?.minutes??0))} min</strong><span>{formatTravelDistance(navigationSummary?.remainingMiles??navigationDistanceMiles??activeMapRoute?.miles??0)} · ETA {navigationSummary?.etaLabel||fallbackNavigationEtaLabel}</span>{navigationLocationError&&<small>{navigationLocationError}</small>}</div><div className="navigation-bottom-actions"><Button type="button" variant="outline" className="navigation-recenter-btn" onClick={recenterNavigationMap}>Re-center</Button><Button type="button" className="navigation-exit-btn" onClick={stopNavigationMode}>Exit</Button></div></section>}
     </div>
