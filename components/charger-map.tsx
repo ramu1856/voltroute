@@ -6,10 +6,10 @@ import { evidenceTime, type AvailabilityInfo } from '@/lib/station-evidence';
 import { riskStyles, type RiskSection } from '@/lib/trip-assessment';
 import 'leaflet/dist/leaflet.css';
 type MapStyle='road'|'satellite';
-export default function ChargerMap({center,stations,selected,amenities,route,routeFocusToken,navigationMode,navigationLocation,backupRoute,mainId,backupId,riskSections,focusedRiskId,onRiskFocus,availability,onSelect,onSearch,fetchedAt}:{center:Point;stations:Station[];selected:Station|null;amenities:Amenity[];route:RoadRoute|null;routeFocusToken:number;navigationMode:boolean;navigationLocation:{lat:number;lon:number;accuracyMeters:number|null;heading:number|null}|null;backupRoute:RoadRoute|null;mainId?:string;backupId?:string;riskSections:RiskSection[];focusedRiskId:string|null;onRiskFocus:(id:string)=>void;availability:Map<string,AvailabilityInfo>;onSelect:(s:Station)=>void;onSearch:(p:Point)=>void;fetchedAt:string}) {
+export default function ChargerMap({center,stations,selected,amenities,route,routeFocusToken,navigationRecenterToken,navigationMode,navigationLocation,backupRoute,mainId,backupId,riskSections,focusedRiskId,onRiskFocus,availability,onSelect,onSearch,fetchedAt}:{center:Point;stations:Station[];selected:Station|null;amenities:Amenity[];route:RoadRoute|null;routeFocusToken:number;navigationRecenterToken:number;navigationMode:boolean;navigationLocation:{lat:number;lon:number;accuracyMeters:number|null;heading:number|null}|null;backupRoute:RoadRoute|null;mainId?:string;backupId?:string;riskSections:RiskSection[];focusedRiskId:string|null;onRiskFocus:(id:string)=>void;availability:Map<string,AvailabilityInfo>;onSelect:(s:Station)=>void;onSearch:(p:Point)=>void;fetchedAt:string}) {
  const container=useRef<HTMLDivElement>(null), map=useRef<Leaflet.Map|null>(null), L=useRef<typeof Leaflet|null>(null), layer=useRef<Leaflet.LayerGroup|null>(null),navigationLayer=useRef<Leaflet.LayerGroup|null>(null),initialCenter=useRef(center);
  const baseLayers=useRef<{road:Leaflet.TileLayer|null;roadFallback:Leaflet.TileLayer|null;satellite:Leaflet.TileLayer|null;labels:Leaflet.TileLayer|null}>({road:null,roadFallback:null,satellite:null,labels:null});
- const roadFallbackActive=useRef(false),mapStyleRef=useRef<MapStyle>('road'),navigationFitTokenRef=useRef(-1);
+ const roadFallbackActive=useRef(false),mapStyleRef=useRef<MapStyle>('road');
  const [ready,setReady]=useState(false),[error,setError]=useState(''),[viewRevision,setViewRevision]=useState(0),[mapStyle,setMapStyle]=useState<MapStyle>('road');
  const visibleBounds=useRef<[number,number][]>([]);
  const choose=useRef(onSelect),focusRisk=useRef(onRiskFocus);
@@ -46,7 +46,7 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
    applyMapStyle('road');
    m.on('zoomend moveend',()=>setViewRevision(v=>v+1));layer.current=lib.layerGroup().addTo(m);navigationLayer.current=lib.layerGroup().addTo(m);resize=new ResizeObserver(()=>m.invalidateSize());resize.observe(container.current);setReady(true);
   }).catch(()=>setError('Map could not load. Use the station list below.'));
-  return()=>{disposed=true;resize?.disconnect();map.current?.remove();map.current=null;layer.current=null;navigationLayer.current=null;baseLayers.current={road:null,roadFallback:null,satellite:null,labels:null};roadFallbackActive.current=false;navigationFitTokenRef.current=-1;};
+  return()=>{disposed=true;resize?.disconnect();map.current?.remove();map.current=null;layer.current=null;navigationLayer.current=null;baseLayers.current={road:null,roadFallback:null,satellite:null,labels:null};roadFallbackActive.current=false;};
  },[]);
  useEffect(()=>{
   if(!ready||!map.current)return;
@@ -133,20 +133,16 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
   if(ready&&coordinates.length)map.current?.fitBounds(coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[35,35],maxZoom:14});
  },[ready,route,backupRoute,focusedRiskId,riskSections,navigationMode]);
  useEffect(()=>{
-  if(!ready||!route?.coordinates.length)return;
+  if(navigationMode||!ready||!route?.coordinates.length)return;
   map.current?.fitBounds(route.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[35,35],maxZoom:14});
- },[ready,route,routeFocusToken]);
+ },[ready,route,routeFocusToken,navigationMode]);
  useEffect(()=>{
   if(!ready||!navigationMode||!route?.coordinates.length||!map.current)return;
-  if(navigationFitTokenRef.current===routeFocusToken)return;
-  map.current.fitBounds(route.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[34,34],maxZoom:14});
-  navigationFitTokenRef.current=routeFocusToken;
- },[ready,navigationMode,route,routeFocusToken]);
- useEffect(()=>{
-  if(navigationMode)return;
-  navigationFitTokenRef.current=-1;
-  navigationLayer.current?.clearLayers();
- },[navigationMode]);
+  const focusPoints=route.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]);
+  if(navigationLocation)focusPoints.push([navigationLocation.lat,navigationLocation.lon]);
+  map.current.fitBounds(focusPoints,{padding:[34,34],maxZoom:14});
+ },[ready,navigationMode,route,navigationRecenterToken,navigationLocation?.lat,navigationLocation?.lon,navigationLocation]);
+ useEffect(()=>{if(!navigationMode)navigationLayer.current?.clearLayers();},[navigationMode]);
  return <div className="map-panel-shell">
   {!navigationMode&&<div className="map-hud map-hud-inline" aria-live="polite">
    <span className="map-hud-live">Live map</span>
