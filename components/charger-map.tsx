@@ -109,6 +109,16 @@ export default function ChargerMap({center,stations,selected,amenities,route,bac
   visibleBounds.current=bounds;
  },[ready,viewRevision,center,stations,selected,amenities,route,backupRoute,mainId,backupId,availability,riskSections,focusedRiskId]);
  useEffect(()=>{const focused=riskSections.find(section=>section.id===focusedRiskId);const coordinates=focused?.coordinates||[...(route?.coordinates||[]),...(backupRoute?.coordinates||[])];if(ready&&coordinates.length)map.current?.fitBounds(coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[35,35],maxZoom:14});},[ready,route,backupRoute,focusedRiskId,riskSections]);
+ function fitVisibleResults(){
+  if(!map.current){setError('Map is still loading. Please wait a moment and try again.');return;}
+  if(!visibleBounds.current.length)return;
+  map.current.fitBounds(visibleBounds.current,{padding:[38,38],maxZoom:13});
+ }
+ function centerSelectedStation(){
+  if(!map.current){setError('Map is still loading. Please wait a moment and try again.');return;}
+  if(!selected)return;
+  map.current.setView([selected.lat,selected.lon],Math.max(map.current.getZoom(),13));
+ }
  return <div className="map-panel-shell">
   <div className="map-hud map-hud-inline" aria-live="polite">
    <span className="map-hud-live">Live map</span>
@@ -117,8 +127,8 @@ export default function ChargerMap({center,stations,selected,amenities,route,bac
    <div className="map-hud-actions">
     <button type="button" disabled={!ready} aria-pressed={mapStyle==='road'} onClick={()=>setMapStyle('road')}>Road map</button>
     <button type="button" disabled={!ready} aria-pressed={mapStyle==='satellite'} onClick={()=>setMapStyle('satellite')}>Satellite</button>
-    <button type="button" disabled={!ready||!stations.length} onClick={()=>{if(!map.current||!visibleBounds.current.length)return;map.current.fitBounds(visibleBounds.current,{padding:[38,38],maxZoom:13});}}>Fit results</button>
-    <button type="button" disabled={!ready||!selected} onClick={()=>{if(!map.current||!selected)return;map.current.setView([selected.lat,selected.lon],Math.max(map.current.getZoom(),13));}}>Center selected</button>
+    <button type="button" disabled={!stations.length} onClick={fitVisibleResults}>Fit results</button>
+    <button type="button" disabled={!selected} onClick={centerSelectedStation}>Center selected</button>
     <button type="button" className="map-search-trigger" disabled={!ready} onClick={()=>{const c=map.current?.getCenter();if(!c)return;onSearch({lat:c.lat,lon:c.lng,label:'Selected map area'});}}>Search this map area</button>
    </div>
   </div>
