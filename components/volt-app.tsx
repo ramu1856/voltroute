@@ -75,6 +75,12 @@ function parseSharedTripFromUrl():TripInput|null{
     battery,
   };
 }
+
+function wantsTripTabFromUrl():boolean{
+ if(typeof window==='undefined')return false;
+ const tabParam=new URLSearchParams(window.location.search).get('tab');
+ return tabParam?.toLowerCase()==='trip';
+}
 function buildSharedTripUrl(input:TripInput){
   const url=new URL(window.location.href);
   url.hash='';
@@ -125,8 +131,16 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const routeStationsSnapshot=useRef<{stations:Station[];center:Point;fetchedAt:string;directoryNotice:string;searchedRadius:string;selectedId:string|null}|null>(null);
  useEffect(()=>{
   let cancelled=false;
+  const shouldOpenTripTab=wantsTripTabFromUrl();
   const sharedTrip=parseSharedTripFromUrl();
-  if(!sharedTrip)return;
+  if(!sharedTrip){
+   if(shouldOpenTripTab){
+    queueMicrotask(()=>{
+     if(!cancelled)setWorkspaceTab('trip');
+    });
+   }
+   return()=>{cancelled=true;};
+  }
   queueMicrotask(()=>{
    if(cancelled)return;
    setOrigin(sharedTrip.origin);
@@ -341,7 +355,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
    <ol>
     <li><strong>Choose your EV</strong><p>Select the company and model, then check the connector and estimated range against your vehicle.</p><a href="#your-ev">Choose my vehicle ↓</a></li>
     <li><strong>Find a charging stop</strong><p>Search a US city or use Near me. Choose a 100–250-mile search area. The directory returns up to 250 mapped results, so it may not show every charger.</p><a href="#charger-search" onClick={()=>setWorkspaceTab('explore')}>Open charger search ↓</a></li>
-    <li><strong>Plan a trip</strong><p>Enter your destination and starting battery. Smart Stop checks a main stop and backup using your reserve and route preference. Review its reasons and any missing data.</p><a href="#charger-search" onClick={()=>setWorkspaceTab('trip')}>Open trip planner ↓</a></li>
+    <li><strong>Plan a trip</strong><p>Enter your destination and starting battery. Smart Stop checks a main stop and backup using your reserve and route preference. Review its reasons and any missing data.</p><a href="?tab=trip#charger-search" onClick={()=>setWorkspaceTab('trip')}>Open trip planner ↓</a></li>
     <li><strong>Review your stop</strong><p>Select a charger to see its source, hours, price, live operator status when available, and nearby food or restrooms. Confirm adapter and network access in the charging network’s app before heading there.</p><a href="#charging-stop">View charging stop ↓</a></li>
    </ol>
   </details>
@@ -360,7 +374,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
       <li><strong>Trip Safety Score + Risk Map:</strong> See where confidence drops along your route.</li>
       <li><strong>Price and wait transparency:</strong> Keep unknown pricing or queue data explicit instead of hidden assumptions.</li>
      </ul>
-     <div className="mt-3 grid gap-2"><Button type="button" onClick={()=>setWorkspaceTab('trip')}>Start Smart Stop planning</Button><a className="text-[0.85rem] text-[#b8f5c5]" href={WORKER_ABOUT_URL}>See full product comparison ↗</a></div>
+     <div className="mt-3 grid gap-2"><Button asChild><a href="?tab=trip#charger-search" onClick={()=>setWorkspaceTab('trip')}>Start Smart Stop planning</a></Button><a className="text-[0.85rem] text-[#b8f5c5]" href={WORKER_ABOUT_URL}>See full product comparison ↗</a></div>
     </section>
     <section className="comparison-snapshot" aria-label="VoltRoute compared with typical EV tools">
      <div className="comparison-head">
