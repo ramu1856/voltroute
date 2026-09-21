@@ -317,7 +317,7 @@
 .navigation-map-shell{position:relative}
 .navigation-map-shell.is-active .real-map{border-top:1px solid #2a3f34}
 .navigation-top-card,.navigation-bottom-card{position:absolute;left:10px;right:auto;z-index:520;pointer-events:auto}
-.navigation-top-card{top:8px;width:min(calc(100% - 20px),460px);padding:5px 7px;border-radius:8px;background:rgba(12,40,34,.9);border:1px solid #2f6d5a;box-shadow:0 4px 12px rgba(0,0,0,.3);color:#eefcf5}
+.navigation-top-card{top:8px;width:min(210px,calc(100% - 20px));padding:5px 7px;border-radius:8px;background:rgba(12,40,34,.9);border:1px solid #2f6d5a;box-shadow:0 4px 12px rgba(0,0,0,.3);color:#eefcf5}
 .navigation-top-eyebrow{display:none}
 .navigation-top-card h3{margin:0;font-size:.82rem;line-height:1.18;font-weight:700}
 .navigation-top-card p{margin:1px 0 0;font-size:.64rem;line-height:1.2;color:#c3ebdc}
@@ -332,7 +332,7 @@
 .navigation-exit-btn:hover{background:#c93f39;border-color:#c93f39}
 @media(max-width:720px){
  .navigation-top-card,.navigation-bottom-card{left:6px}
- .navigation-top-card{width:min(calc(100% - 12px),430px);padding:4px 6px}
+ .navigation-top-card{width:min(186px,calc(100% - 12px));padding:4px 6px}
  .navigation-top-card h3{font-size:.76rem}
  .navigation-top-card p{font-size:.6rem}
  .navigation-bottom-card{width:min(calc(100% - 12px),390px);padding:4px 6px}
