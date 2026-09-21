@@ -454,8 +454,9 @@ async function plan(input:TripInput={origin,destination,profile,battery}){setSma
   register({name:'set_vehicle_profile',title:'Set EV profile',description:'Set the vehicle name, connector and full-battery range used for matching and trip estimates.',inputSchema:{type:'object',properties:{name:{type:'string',minLength:1,maxLength:80},connector:{type:'string',enum:['NACS','CCS1','J1772','CHAdeMO']},range:{type:'number',minimum:30,maximum:600}},required:['name','connector','range'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute(input:unknown){const p=input as Profile;if(!p.name||!['NACS','CCS1','J1772','CHAdeMO'].includes(p.connector)||p.range<30||p.range>600)throw new Error('Valid vehicle details are required');setProfile(p);return{updated:true,profile:p};}});
   return()=>lifecycle.abort();
  },[]);
- const mapStations=routeOnlyMode?[]:visible;
- const mapAmenities=routeOnlyMode?[]:amenities;
+ const routeMapVisible=!!(navigationRoute||mapRouteOverride);
+ const mapStations=routeOnlyMode||routeMapVisible?[]:visible;
+ const mapAmenities=routeOnlyMode||routeMapVisible?[]:amenities;
  const mapRiskSections=routeOnlyMode?[]:(showRisk?tripAssessment?.sections||[]:[]);
  const mapSelected=routeOnlyMode?null:selected;
  return <main className="vr-app"><Toaster richColors position="bottom-center"/><AccountAuth open={showAuth} onClose={()=>setShowAuth(false)} supabaseUrl={supabaseUrl} supabaseKey={supabaseKey}/>
