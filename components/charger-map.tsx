@@ -7,7 +7,7 @@ import { riskStyles, type RiskSection } from '@/lib/trip-assessment';
 import 'leaflet/dist/leaflet.css';
 type MapStyle='road'|'satellite';
 export default function ChargerMap({center,stations,selected,amenities,route,routeFocusToken,navigationRecenterToken,navigationMode,navigationLocation,backupRoute,mainId,backupId,riskSections,focusedRiskId,onRiskFocus,availability,onSelect,onSearch,fetchedAt}:{center:Point;stations:Station[];selected:Station|null;amenities:Amenity[];route:RoadRoute|null;routeFocusToken:number;navigationRecenterToken:number;navigationMode:boolean;navigationLocation:{lat:number;lon:number;accuracyMeters:number|null;heading:number|null}|null;backupRoute:RoadRoute|null;mainId?:string;backupId?:string;riskSections:RiskSection[];focusedRiskId:string|null;onRiskFocus:(id:string)=>void;availability:Map<string,AvailabilityInfo>;onSelect:(s:Station)=>void;onSearch:(p:Point)=>void;fetchedAt:string}) {
- const container=useRef<HTMLDivElement>(null), map=useRef<Leaflet.Map|null>(null), L=useRef<typeof Leaflet|null>(null), layer=useRef<Leaflet.LayerGroup|null>(null),navigationLayer=useRef<Leaflet.LayerGroup|null>(null),initialCenter=useRef(center);
+ const container=useRef<HTMLDivElement>(null), map=useRef<Leaflet.Map|null>(null), L=useRef<typeof Leaflet|null>(null), layer=useRef<Leaflet.LayerGroup|null>(null),routeLayer=useRef<Leaflet.LayerGroup|null>(null),navigationLayer=useRef<Leaflet.LayerGroup|null>(null),initialCenter=useRef(center);
  const baseLayers=useRef<{road:Leaflet.TileLayer|null;roadFallback:Leaflet.TileLayer|null;satellite:Leaflet.TileLayer|null;labels:Leaflet.TileLayer|null}>({road:null,roadFallback:null,satellite:null,labels:null});
  const roadFallbackActive=useRef(false),mapStyleRef=useRef<MapStyle>('road');
  const [ready,setReady]=useState(false),[error,setError]=useState(''),[viewRevision,setViewRevision]=useState(0),[mapStyle,setMapStyle]=useState<MapStyle>('road');
@@ -44,9 +44,9 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
    labels.on('tileerror',()=>{if(mapStyleRef.current==='satellite')setError('Some satellite labels could not load.');});
    baseLayers.current={road,roadFallback,satellite,labels};
    applyMapStyle('road');
-   m.on('zoomend moveend',()=>setViewRevision(v=>v+1));layer.current=lib.layerGroup().addTo(m);navigationLayer.current=lib.layerGroup().addTo(m);resize=new ResizeObserver(()=>m.invalidateSize());resize.observe(container.current);setReady(true);
+   m.on('zoomend moveend',()=>setViewRevision(v=>v+1));layer.current=lib.layerGroup().addTo(m);routeLayer.current=lib.layerGroup().addTo(m);navigationLayer.current=lib.layerGroup().addTo(m);resize=new ResizeObserver(()=>m.invalidateSize());resize.observe(container.current);setReady(true);
   }).catch(()=>setError('Map could not load. Use the station list below.'));
-  return()=>{disposed=true;resize?.disconnect();map.current?.remove();map.current=null;layer.current=null;navigationLayer.current=null;baseLayers.current={road:null,roadFallback:null,satellite:null,labels:null};roadFallbackActive.current=false;};
+  return()=>{disposed=true;resize?.disconnect();map.current?.remove();map.current=null;layer.current=null;routeLayer.current=null;navigationLayer.current=null;baseLayers.current={road:null,roadFallback:null,satellite:null,labels:null};roadFallbackActive.current=false;};
  },[]);
  useEffect(()=>{
   if(!ready||!map.current)return;
@@ -58,10 +58,9 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
   const bounds:[number,number][]=[];
   const add=(lat:number,lon:number,text:string,color:string,radius:number,click?:()=>void)=>{bounds.push([lat,lon]);const el=document.createElement('span');el.textContent=text;const marker=lib.circleMarker([lat,lon],{radius,fillColor:color,color:'#10241a',weight:2,fillOpacity:1}).bindTooltip(el).addTo(layer.current!);if(click)marker.on('click',click);};
   const hasRisks=riskSections.length>0;
-  if(route){
+  if(route&&!navigationMode){
    const routeCoordinates=route.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]);
-   if(navigationMode)lib.polyline(routeCoordinates,{color:'#d5e0ff',weight:10,opacity:.9,interactive:false}).addTo(layer.current);
-   lib.polyline(routeCoordinates,{color:navigationMode?'#355dff':hasRisks?'#9ca9b1':'#428cff',weight:navigationMode?6:4}).addTo(layer.current);
+   lib.polyline(routeCoordinates,{color:hasRisks?'#9ca9b1':'#428cff',weight:4}).addTo(layer.current);
    if(route.coordinates.length){
     const [startLon,startLat]=route.coordinates[0];
     const [endLon,endLat]=route.coordinates[route.coordinates.length-1];
@@ -111,6 +110,19 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
   visibleBounds.current=bounds;
  },[ready,viewRevision,center,stations,selected,amenities,route,navigationMode,backupRoute,mainId,backupId,availability,riskSections,focusedRiskId]);
  useEffect(()=>{
+  if(!ready||!L.current||!routeLayer.current)return;
+  const lib=L.current;
+  routeLayer.current.clearLayers();
+  if(!navigationMode||!route?.coordinates.length)return;
+  const routeCoordinates=route.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]);
+  lib.polyline(routeCoordinates,{color:'#d5e0ff',weight:10,opacity:.9,interactive:false}).addTo(routeLayer.current);
+  lib.polyline(routeCoordinates,{color:'#355dff',weight:6}).addTo(routeLayer.current);
+  const [startLon,startLat]=route.coordinates[0];
+  const [endLon,endLat]=route.coordinates[route.coordinates.length-1];
+  lib.circleMarker([startLat,startLon],{radius:6,fillColor:'#5b8def',color:'#10241a',weight:2,fillOpacity:1}).bindTooltip('Trip start').addTo(routeLayer.current);
+  lib.circleMarker([endLat,endLon],{radius:8,fillColor:'#5b8def',color:'#10241a',weight:2,fillOpacity:1}).bindTooltip('Trip destination').addTo(routeLayer.current);
+ },[ready,navigationMode,route,routeFocusToken]);
+ useEffect(()=>{
   if(!ready||!L.current||!navigationLayer.current)return;
   const lib=L.current;
   navigationLayer.current.clearLayers();
@@ -142,7 +154,11 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
   if(navigationLocation)focusPoints.push([navigationLocation.lat,navigationLocation.lon]);
   map.current.fitBounds(focusPoints,{padding:[34,34],maxZoom:14});
  },[ready,navigationMode,route,navigationRecenterToken,navigationLocation?.lat,navigationLocation?.lon,navigationLocation]);
- useEffect(()=>{if(!navigationMode)navigationLayer.current?.clearLayers();},[navigationMode]);
+ useEffect(()=>{
+  if(navigationMode)return;
+  routeLayer.current?.clearLayers();
+  navigationLayer.current?.clearLayers();
+ },[navigationMode]);
  return <div className="map-panel-shell">
   {!navigationMode&&<div className="map-hud map-hud-inline" aria-live="polite">
    <span className="map-hud-live">Live map</span>
