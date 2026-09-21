@@ -106,7 +106,7 @@ test('directed matrix distances and durations are converted to miles/minutes wit
   assert.deepEqual(parseMatrixResponse(missing,1),[null]);
   assert.deepEqual(parseMatrixResponse({...matrix(),fallback_speed_cells:[[0,1]]},1),[null]);
   const malformed=matrix();malformed.durations[1].pop();assert.throws(()=>parseMatrixResponse(malformed,1));
-  const far=matrix();far.sources[0].distance=1001;assert.throws(()=>parseMatrixResponse(far,1));
+  const far=matrix();far.sources[0].distance=5001;assert.throws(()=>parseMatrixResponse(far,1));
 });
 test('route geometry, waypoint order and leg totals must agree',()=>{
   const response={code:'Ok',waypoints:[wp(),wp(),wp()],routes:[{distance:3000,duration:300,legs:[{distance:1000,duration:100},{distance:2000,duration:200}],geometry:{coordinates:[[-87,42],[-86.9,42],[-86.8,42]]}}]};

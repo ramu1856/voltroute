@@ -35,7 +35,11 @@ export async function POST(request:Request){
         const url=new URL(`/route/v1/driving/${coordinates}`,settings.OSRM_URL||'https://router.project-osrm.org');
         url.search='overview=full&geometries=geojson&steps=false&continue_straight=false';
         try{return parseRoadResponse(await fetchJson(url.href),points.length);}
-        catch(error){if(error instanceof ServiceError)throw error;throw new ServiceError('A complete driving route could not be confirmed. Try more precise locations.');}
+        catch(error){
+          if(error instanceof ServiceError)throw error;
+          if(error instanceof Error&&error.message)throw new ServiceError(error.message,400);
+          throw new ServiceError('A complete driving route could not be confirmed. Try more precise locations.');
+        }
       });return {...result.data,fetchedAt:result.fetchedAt};
     }
     const initial=await roadFor([input.origin,input.destination]);

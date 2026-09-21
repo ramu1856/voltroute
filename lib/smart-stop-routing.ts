@@ -3,6 +3,8 @@ import type { RoadLegs } from './smart-stop.ts';
 import type { RoadRoute } from './ev.ts';
 import type { RoadConnection } from './backup-charger.ts';
 
+const endpointSnapToleranceMeters=5000;
+
 const number=z.number().finite().nonnegative();
 const waypoint=z.object({distance:number,location:z.tuple([z.number().min(-180).max(180),z.number().min(-90).max(90)])});
 const routeResponse=z.object({code:z.literal('Ok'),waypoints:z.array(waypoint),routes:z.array(z.object({
@@ -16,7 +18,7 @@ const matrixResponse=z.object({code:z.literal('Ok'),sources:z.array(waypoint),de
 
 export function parseRoadResponse(value:unknown,points:number) {
   const data=routeResponse.parse(value),route=data.routes[0];
-  if(data.waypoints.length!==points||route.legs.length!==points-1||data.waypoints[0].distance>1000||data.waypoints.at(-1)!.distance>1000)throw new Error('Road endpoints could not be matched closely enough. Choose a more precise start and destination.');
+  if(data.waypoints.length!==points||route.legs.length!==points-1||data.waypoints[0].distance>endpointSnapToleranceMeters||data.waypoints.at(-1)!.distance>endpointSnapToleranceMeters)throw new Error('Road endpoints could not be matched closely enough. Choose a more precise start and destination.');
   if(Math.abs(route.legs.reduce((sum,leg)=>sum+leg.distance,0)-route.distance)>2||Math.abs(route.legs.reduce((sum,leg)=>sum+leg.duration,0)-route.duration)>2)throw new Error('The road response was inconsistent. Try the route again.');
   return {road:{coordinates:route.geometry.coordinates,miles:route.distance/1609.344,minutes:route.duration/60} as Omit<RoadRoute,'fetchedAt'>,
     legs:route.legs.map(leg=>({miles:leg.distance/1609.344,minutes:leg.duration/60})),snaps:data.waypoints.map(point=>point.distance)};
@@ -27,7 +29,7 @@ export type ChargingRoadGraph={legs:(RoadLegs|null)[];connections:(RoadConnectio
 export function parseChargingRoadGraph(value:unknown,stationCount:number):ChargingRoadGraph {
   const data=matrixResponse.parse(value),count=stationCount+2,last=count-1;
   if(data.sources.length!==count||data.destinations.length!==count||data.distances.length!==count||data.durations.length!==count||data.distances.some(row=>row.length!==count)||data.durations.some(row=>row.length!==count))throw new Error('The road comparison was incomplete. Try again.');
-  if([data.sources[0],data.destinations[0],data.sources[last],data.destinations[last]].some(point=>point.distance>1000))throw new Error('Road endpoints could not be matched closely enough. Choose more precise locations.');
+  if([data.sources[0],data.destinations[0],data.sources[last],data.destinations[last]].some(point=>point.distance>endpointSnapToleranceMeters))throw new Error('Road endpoints could not be matched closely enough. Choose more precise locations.');
   const fallback=new Set((data.fallback_speed_cells||[]).map(([i,j])=>`${i}:${j}`));
   const legs=Array.from({length:stationCount},(_,index)=>{
     const j=index+1,distances=[data.distances[0][j],data.distances[j][last]],durations=[data.durations[0][j],data.durations[j][last]];
