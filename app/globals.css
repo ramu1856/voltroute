@@ -283,3 +283,10 @@
 .map-hud-actions button[aria-pressed=true]{background:#25553a;border-color:#8acb9e;color:#eff9f2}
 .map-hud-actions button:disabled{opacity:.55;cursor:not-allowed}
 @media(max-width:720px){.map-hud{left:8px;right:8px;max-width:none}}
+
+/* Keep map controls outside the map canvas for a clean view. */
+.map-panel-shell{display:grid;gap:0}
+.map-hud-inline{position:static;left:auto;top:auto;z-index:auto;display:flex;flex-wrap:wrap;align-items:center;gap:10px;max-width:none;padding:10px 14px;border-width:0 0 1px;border-color:#3e5949;border-radius:0;background:#13281d;backdrop-filter:none}
+.map-hud-inline .map-hud-actions{margin-left:auto}
+.map-search-trigger{min-width:150px}
+@media(max-width:900px){.map-hud-inline .map-hud-actions{margin-left:0}}
