@@ -9,7 +9,7 @@ type MapStyle='road'|'satellite';
 export default function ChargerMap({center,stations,selected,amenities,route,routeFocusToken,navigationMode,navigationLocation,backupRoute,mainId,backupId,riskSections,focusedRiskId,onRiskFocus,availability,onSelect,onSearch,fetchedAt}:{center:Point;stations:Station[];selected:Station|null;amenities:Amenity[];route:RoadRoute|null;routeFocusToken:number;navigationMode:boolean;navigationLocation:{lat:number;lon:number;accuracyMeters:number|null;heading:number|null}|null;backupRoute:RoadRoute|null;mainId?:string;backupId?:string;riskSections:RiskSection[];focusedRiskId:string|null;onRiskFocus:(id:string)=>void;availability:Map<string,AvailabilityInfo>;onSelect:(s:Station)=>void;onSearch:(p:Point)=>void;fetchedAt:string}) {
  const container=useRef<HTMLDivElement>(null), map=useRef<Leaflet.Map|null>(null), L=useRef<typeof Leaflet|null>(null), layer=useRef<Leaflet.LayerGroup|null>(null),initialCenter=useRef(center);
  const baseLayers=useRef<{road:Leaflet.TileLayer|null;roadFallback:Leaflet.TileLayer|null;satellite:Leaflet.TileLayer|null;labels:Leaflet.TileLayer|null}>({road:null,roadFallback:null,satellite:null,labels:null});
- const roadFallbackActive=useRef(false),mapStyleRef=useRef<MapStyle>('road'),navigationCenteredRef=useRef(false);
+ const roadFallbackActive=useRef(false),mapStyleRef=useRef<MapStyle>('road');
  const [ready,setReady]=useState(false),[error,setError]=useState(''),[viewRevision,setViewRevision]=useState(0),[mapStyle,setMapStyle]=useState<MapStyle>('road');
  const visibleBounds=useRef<[number,number][]>([]);
  const choose=useRef(onSelect),focusRisk=useRef(onRiskFocus);
@@ -128,16 +128,11 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
   map.current?.fitBounds(route.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[35,35],maxZoom:14});
  },[ready,route,routeFocusToken]);
  useEffect(()=>{
-  if(!ready||!navigationMode||!navigationLocation||!map.current)return;
-  const current:[number,number]=[navigationLocation.lat,navigationLocation.lon];
-  if(!navigationCenteredRef.current){
-   map.current.setView(current,Math.max(15,map.current.getZoom()));
-   navigationCenteredRef.current=true;
-   return;
-  }
-  map.current.panTo(current,{animate:true,duration:.7});
- },[ready,navigationMode,navigationLocation,navigationLocation?.lat,navigationLocation?.lon]);
- useEffect(()=>{if(!navigationMode)navigationCenteredRef.current=false;},[navigationMode]);
+  if(!ready||!navigationMode||!route?.coordinates.length||!map.current)return;
+  const allPoints=route.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]);
+  if(navigationLocation)allPoints.push([navigationLocation.lat,navigationLocation.lon]);
+  map.current.fitBounds(allPoints,{padding:[34,34],maxZoom:14});
+ },[ready,navigationMode,route,navigationLocation,navigationLocation?.lat,navigationLocation?.lon]);
  return <div className="map-panel-shell">
   {!navigationMode&&<div className="map-hud map-hud-inline" aria-live="polite">
    <span className="map-hud-live">Live map</span>
