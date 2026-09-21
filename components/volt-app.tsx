@@ -286,7 +286,6 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
   if(!road||!tripSnapshot){toast.info('Calculate the route first to start navigation mode.');return;}
   setStartingNavigation(true);
   try{
-   setRouteOnlyMode(true);
    showRouteDirectionsOnMap(road);
    setNavigationTargetId(TRIP_DESTINATION_NAV_ID);
    setNavigationStartedAt(Date.now());
@@ -300,7 +299,6 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
  async function startNavigationToStation(station:Station){
   setSelected(station);
   setExpandedChargerId(station.id);
-  setRouteOnlyMode(true);
   setNavigationTargetId(station.id);
   setStartingNavigation(true);
   try{
