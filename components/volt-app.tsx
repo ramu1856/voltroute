@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { Zap, LocateFixed, Search, Navigation, Utensils, Toilet, Bookmark, Route, Car, ArrowRight, MapPin, X, AlertTriangle, Clock3, CheckCircle2, Link2, ArrowUpDown, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -328,7 +329,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
   return()=>lifecycle.abort();
  },[]);
  return <main className="vr-app"><Toaster richColors position="bottom-center"/><AccountAuth open={showAuth} onClose={()=>setShowAuth(false)} supabaseUrl={supabaseUrl} supabaseKey={supabaseKey}/>
- <header className="topbar"><a href="/" className="brand"><span className="brand-mark"><Zap/></span>VoltRoute <small className="beta">BETA</small></a><div className="account-nav">{signedIn?<><span>{account||session?.user.email||session?.user.phone||'Signed in'}</span><button type="button" onClick={()=>void supabaseBrowser({url:supabaseUrl,key:supabaseKey}).auth.signOut()}>Sign out</button></>:<button type="button" disabled={!authReady} onClick={()=>void requestGoogleSignIn()}>{authReady?'Continue with Google':'Checking account…'}</button>}</div></header>
+ <header className="topbar"><Link href="/" className="brand"><span className="brand-mark"><Zap/></span>VoltRoute <small className="beta">BETA</small></Link><div className="account-nav">{signedIn?<><span>{account||session?.user.email||session?.user.phone||'Signed in'}</span><button type="button" onClick={()=>void supabaseBrowser({url:supabaseUrl,key:supabaseKey}).auth.signOut()}>Sign out</button></>:<button type="button" disabled={!authReady} onClick={()=>void requestGoogleSignIn()}>{authReady?'Continue with Google':'Checking account…'}</button>}</div></header>
   <div className="data-banner"><span>{loading?'Loading directory…':error?'Directory search unavailable':directoryNotice?'Saved directory listings':fetchedAt?'Community directory loaded':'Community station directory'}</span> Live availability is checked through TomTom when a matching station and operator feed are available. Otherwise status stays unconfirmed.</div>
   <nav className="mobile-jumps" aria-label="Charging page sections"><a href="#charger-search">Search & vehicle</a><a href="#charger-map">Map & results</a><a href="#charging-stop">Charging stop</a></nav>
   <details className="quick-guide"><summary>New to VoltRoute? Start here</summary>

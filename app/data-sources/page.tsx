@@ -1,7 +1,8 @@
+import Link from 'next/link';
 import { ProviderHealthPanel } from '@/components/provider-health-panel';
 export const metadata={title:'Data Sources | VoltRoutes'};
 export default function DataSources(){
- return <main className="legal-page"><div className="legal-shell"><a href="/">← Back to VoltRoutes</a><h1>Data Sources</h1>
+ return <main className="legal-page"><div className="legal-shell"><Link href="/">← Back to VoltRoutes</Link><h1>Data Sources</h1>
  <p>VoltRoutes separates directory data from operational evidence so users can see what each value actually means.</p>
  <h2>Charging station directory</h2><p>OpenStreetMap community data may be used for charger location, connectors, listed power, access, hours, and community-listed pricing. A recent directory download does not mean a charger was recently tested.</p>
  <h2>Road routing</h2><p>OSRM may be used for driving routes, road distance, and travel-time estimates. Traffic conditions may not be included.</p>

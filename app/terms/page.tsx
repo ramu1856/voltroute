@@ -1,6 +1,7 @@
+import Link from 'next/link';
 export const metadata={title:'Terms of Use | VoltRoutes'};
 export default function Terms(){
- return <main className="legal-page"><div className="legal-shell"><a href="/">← Back to VoltRoutes</a><h1>Terms of Use</h1><p>Last updated: September 19, 2026</p>
+ return <main className="legal-page"><div className="legal-shell"><Link href="/">← Back to VoltRoutes</Link><h1>Terms of Use</h1><p>Last updated: September 19, 2026</p>
  <h2>Planning tool, not a guarantee</h2><p>VoltRoutes is a trip-planning and charging-discovery tool. Routes, battery estimates, charger status, prices, hours, queue estimates, and safety checks are planning information only and are not guarantees.</p>
  <h2>Driver responsibility</h2><p>You are responsible for confirming charger compatibility, access, opening hours, payment requirements, road conditions, and enough battery reserve before driving. Follow your vehicle manufacturer guidance and applicable traffic laws.</p>
  <h2>Emergency use</h2><p>Do not rely on VoltRoutes as an emergency or roadside-assistance service. If you cannot safely continue, contact your vehicle manufacturer, charging network, insurer, or roadside-assistance provider.</p>
