@@ -43,7 +43,14 @@ type DriverReport={sourceId:string;stationName:string;status:'working'|'busy'|'b
 type Saved = {id:string;kind:'profile'|'station'|'trip'|'report';payload:Profile | (Point&{sourceId:string}) | TripInput | DriverReport;updated:number};
 type NavigationLocationState={lat:number;lon:number;accuracyMeters:number|null;heading:number|null;speedMph:number|null;recordedAt:number};
 function hasRenderableRoute(route:RoadRoute|null|undefined):route is RoadRoute{
- return !!route&&Array.isArray(route.coordinates)&&route.coordinates.length>1&&route.coordinates.every(point=>Array.isArray(point)&&point.length===2&&Number.isFinite(point[0])&&Number.isFinite(point[1]));
+ if(!route||!Array.isArray(route.coordinates)||route.coordinates.length<2)return false;
+ if(!route.coordinates.every(point=>Array.isArray(point)&&point.length===2&&Number.isFinite(point[0])&&Number.isFinite(point[1])))return false;
+ let geometryMiles=0;
+ for(let index=1;index<route.coordinates.length;index++){
+  const previous=route.coordinates[index-1],current=route.coordinates[index];
+  geometryMiles+=miles({lat:previous[1],lon:previous[0]},{lat:current[1],lon:current[0]});
+ }
+ return geometryMiles>.01;
 }
 async function api<T>(path:string,init?:RequestInit,accessToken?:string):Promise<T>{const headers=new Headers(init?.headers);if(accessToken)headers.set('Authorization',`Bearer ${accessToken}`);const response=await fetch(path,{...init,headers});const data=await response.json() as T & {error?:string};if(!response.ok)throw new Error(data.error || 'Something went wrong. Please try again.');return data;}
 function directions(p:{lat:number;lon:number},walking=false){return `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}&travelmode=${walking?'walking':'driving'}`;}
@@ -353,26 +360,28 @@ useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.cu
  function recenterNavigationMap(){
   setNavigationRecenterToken(token=>token+1);
  }
-function routeStartPoint(preferLiveStart:boolean){
-  if(preferLiveStart&&navigationLocation)return {lat:navigationLocation.lat,lon:navigationLocation.lon,label:'Current location'};
-  return origin;
-}
 async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean;preferLiveStart?:boolean}){
-  const start=routeStartPoint(!!options?.preferLiveStart);
-  const signature=`${station.id}:${start.lat.toFixed(5)}:${start.lon.toFixed(5)}`;
-  if(!options?.forceFresh&&hasRenderableRoute(selectedRoad)&&selectedRoadStationIdRef.current===station.id&&selectedRoadSignatureRef.current===signature)return selectedRoad;
+  const startCandidates:Point[]=[];
+  if(options?.preferLiveStart&&navigationLocation)startCandidates.push({lat:navigationLocation.lat,lon:navigationLocation.lon,label:'Current location'});
+  startCandidates.push(origin);
+  const primarySignature=`${station.id}:${startCandidates[0].lat.toFixed(5)}:${startCandidates[0].lon.toFixed(5)}`;
+  if(!options?.forceFresh&&hasRenderableRoute(selectedRoad)&&selectedRoadStationIdRef.current===station.id&&selectedRoadSignatureRef.current===primarySignature)return selectedRoad;
   let lastError:Error|null=null;
-  for(let attempt=0;attempt<2;attempt++){
-   try{
-    const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${start.lat}&lon=${start.lon}&toLat=${station.lat}&toLon=${station.lon}`);
-    const routeToStation={...r.data,fetchedAt:r.fetchedAt};
-    if(!hasRenderableRoute(routeToStation))throw new Error('Route geometry is incomplete for this destination.');
-    selectedRoadStationIdRef.current=station.id;
-    selectedRoadSignatureRef.current=signature;
-    setSelectedRoad(routeToStation);
-    return routeToStation;
-   }catch(error){
-    lastError=error instanceof Error?error:new Error('Route could not be loaded right now.');
+  const uniqueStarts=startCandidates.filter((point,index,list)=>list.findIndex(candidate=>Math.abs(candidate.lat-point.lat)<1e-6&&Math.abs(candidate.lon-point.lon)<1e-6)===index);
+  for(const start of uniqueStarts){
+   const signature=`${station.id}:${start.lat.toFixed(5)}:${start.lon.toFixed(5)}`;
+   for(let attempt=0;attempt<2;attempt++){
+    try{
+     const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${start.lat}&lon=${start.lon}&toLat=${station.lat}&toLon=${station.lon}`);
+     const routeToStation={...r.data,fetchedAt:r.fetchedAt};
+     if(!hasRenderableRoute(routeToStation))throw new Error('Route geometry is incomplete for this destination.');
+     selectedRoadStationIdRef.current=station.id;
+     selectedRoadSignatureRef.current=signature;
+     setSelectedRoad(routeToStation);
+     return routeToStation;
+    }catch(error){
+     lastError=error instanceof Error?error:new Error('Route could not be loaded right now.');
+    }
    }
   }
   throw lastError||new Error('Route could not be loaded right now.');
