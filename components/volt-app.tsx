@@ -170,7 +170,9 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const visible=useMemo(()=>stations.filter(s=>(!(openNow||allDay)||(hoursClock!==null&&matchesHoursFilter(stationHours.get(s.id)!,openNow,allDay)))&&(!fast||(s.power!==null&&s.power>=100))&&(!freeOnly||s.fee==='Listed as free')&&(!(match||emergency)||s.connectors.includes(profile.connector))&&`${s.name} ${s.network} ${s.address}`.toLowerCase().includes(filter.toLowerCase())).slice(0,emergency?12:250),[stations,fast,freeOnly,match,emergency,profile.connector,filter,openNow,allDay,stationHours,hoursClock]);
  const checkpoints=road&&tripSnapshot?chargingCheckpoints(road,tripSnapshot.profile,tripSnapshot.battery):[];
 const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const mid=road.coordinates[Math.floor(road.coordinates.length/2)];if(!mid)return null;const [lon,lat]=mid;return {lat,lon};},[road]);
- const navigationTarget=navigationTargetId?stations.find(station=>station.id===navigationTargetId)||(selected?.id===navigationTargetId?selected:null):null;
+ const TRIP_DESTINATION_NAV_ID='__trip-destination__';
+ const navigationTarget=navigationTargetId&&navigationTargetId!==TRIP_DESTINATION_NAV_ID?stations.find(station=>station.id===navigationTargetId)||(selected?.id===navigationTargetId?selected:null):null;
+ const navigationTargetName=navigationTargetId===TRIP_DESTINATION_NAV_ID?destination.label:navigationTarget?.name||null;
  function portsLabel(info:ReturnType<typeof stationAvailability.get>){
   if(!info)return 'Ports: unconfirmed';
   if(info.availablePorts!==null&&info.totalPorts!==null)return `Ports: ${info.availablePorts}/${info.totalPorts} free`;
@@ -266,18 +268,11 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
  async function showDirectionsToStation(station:Station){
   setSelected(station);
   setExpandedChargerId(station.id);
-  setRouteOnlyMode(true);
-  setNavigationTargetId(station.id);
-  setNavigationStartedAt(null);
   setSelectedRoadBusy(true);
   try{
    const routeToStation=await loadRoadToStation(station);
-   setNavigationDistanceMiles(routeToStation.miles);
-   setNavigationEtaMinutes(Math.round(routeToStation.minutes));
    showRouteDirectionsOnMap(routeToStation,'Directions are now shown on the map.');
   }catch(e){
-   setRouteOnlyMode(false);
-   setNavigationTargetId(null);
    toast.error((e as Error).message||'Directions could not be loaded right now.');
   }finally{
    setSelectedRoadBusy(false);
@@ -286,6 +281,21 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
  async function showDirectionsToSelected(){
   if(!selected)return;
   await showDirectionsToStation(selected);
+ }
+ async function startTripNavigation(){
+  if(!road||!tripSnapshot){toast.info('Calculate the route first to start navigation mode.');return;}
+  setStartingNavigation(true);
+  try{
+   setRouteOnlyMode(true);
+   showRouteDirectionsOnMap(road);
+   setNavigationTargetId(TRIP_DESTINATION_NAV_ID);
+   setNavigationStartedAt(Date.now());
+   setNavigationDistanceMiles(road.miles);
+   setNavigationEtaMinutes(Math.round(road.minutes));
+   toast.success('VoltRoute navigation mode started for your destination route.');
+  }finally{
+   setStartingNavigation(false);
+  }
  }
  async function startNavigationToStation(station:Station){
   setSelected(station);
@@ -520,7 +530,7 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
      {routeStationsMode&&<p className="muted-small">Route charger dots mode is active. The map and list now focus on chargers near the full road corridor.</p>}
      {routeStationsError&&<p className="error-text" role="alert">{routeStationsError}</p>}
      {checkpoints[0]&&<Button className="full" onClick={()=>loadStations({...checkpoints[0],label:`Next charging area near mile ${checkpoints[0].mile}`})}><Zap/>Find chargers at next stop</Button>}{checkpoints.slice(0,8).map((p,i)=><Button key={i} variant="outline" className="checkpoint" onClick={()=>loadStations({...p,label:`Route check ${i+1}, near mile ${p.mile}`})}>Find chargers near mile {p.mile}<ArrowRight/></Button>)}{checkpoints.length>8&&<p>Showing the first 8 checks. Break this route into shorter trips.</p>}
-     <Button variant="secondary" className="full" disabled={saving} onClick={()=>save('trip',tripSnapshot)}><Bookmark/>Save trip</Button><Button variant="outline" className="full" onClick={()=>showRouteDirectionsOnMap(road,'Trip directions are now shown on the map.')}><Navigation/>Get directions on map</Button><Button asChild variant="outline" className="full"><a href={googleEvSearch(routeMidpoint||{lat:Number(((tripSnapshot.origin.lat+tripSnapshot.destination.lat)/2).toFixed(4)),lon:Number(((tripSnapshot.origin.lon+tripSnapshot.destination.lon)/2).toFixed(4))})} target="_blank" rel="noreferrer"><Search/>Find EV chargers on this drive</a></Button></section>}
+     <Button variant="secondary" className="full" disabled={saving} onClick={()=>save('trip',tripSnapshot)}><Bookmark/>Save trip</Button><Button variant="outline" className="full" onClick={()=>showRouteDirectionsOnMap(road,'Trip directions are now shown on the map.')}><Navigation/>Get directions on map</Button><Button className="full" type="button" disabled={startingNavigation} onClick={()=>void startTripNavigation()}><Route/>{startingNavigation&&navigationTargetId===TRIP_DESTINATION_NAV_ID?'Starting…':'Start'}</Button><Button asChild variant="outline" className="full"><a href={googleEvSearch(routeMidpoint||{lat:Number(((tripSnapshot.origin.lat+tripSnapshot.destination.lat)/2).toFixed(4)),lon:Number(((tripSnapshot.origin.lon+tripSnapshot.destination.lon)/2).toFixed(4))})} target="_blank" rel="noreferrer"><Search/>Find EV chargers on this drive</a></Button></section>}
     </TabsContent>
     <TabsContent value="saved" className="tab-body"><h2>Your saved places & trips</h2>{!signedIn&&<div className="account-prompt"><p>Sign in with Google to save vehicles, chargers and trips across devices.</p><Button type="button" onClick={()=>void requestGoogleSignIn()}>Continue with Google</Button></div>}{accountError&&<p className="error-text">{accountError}<button onClick={loadAccount}>Retry</button></p>}{signedIn&&saved.filter(s=>s.kind==='station'||s.kind==='trip').length===0&&<p className="muted-small">Save a charger or a calculated trip to find it here.</p>}
      {saved.filter(s=>s.kind==='station'||s.kind==='trip').map(s=>{const station=s.kind==='station'?s.payload as Point&{sourceId:string}:null;const trip=s.kind==='trip'?s.payload as TripInput:null;return <div className="saved-item" key={s.id}><div><strong>{station?.label||`${trip?.origin.label} → ${trip?.destination.label}`}</strong><span>{station?'Saved charger':'Saved trip'}</span><Button variant="link" onClick={()=>{if(station)void loadStations(station);else if(trip){setOrigin(trip.origin);setDestination(trip.destination);setProfile(trip.profile);setBattery(trip.battery);toast.info('Trip inputs restored. Open Plan a trip and calculate the route.');}}}>{station?'View area':'Restore trip'}</Button></div><Button variant="ghost" size="icon" disabled={saving} aria-label="Remove saved item" onClick={()=>remove(s.id)}><X/></Button></div>;})}
@@ -538,7 +548,7 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
     {!routeOnlyMode&&<ChargeSessionAssistant station={selected} vehicleName={profile.name} enteredRate={selected?enteredRates[selected.id]||'':''}/>}
     <ChargerMap availability={stationAvailability} center={center} stations={mapStations} selected={mapSelected} amenities={mapAmenities} route={mapRouteOverride||smartPlan?.route||road} backupRoute={routeOnlyMode?null:smartPlan?.selected?.backup?.route||null} mainId={routeOnlyMode?undefined:smartPlan?.selected?.station.id} backupId={routeOnlyMode?undefined:smartPlan?.selected?.backup?.station.id} riskSections={mapRiskSections} focusedRiskId={focusedRisk} onRiskFocus={id=>setFocusedRisk(current=>current===id?null:id)} onSelect={setSelected} onSearch={p=>loadStations(p)} fetchedAt={fetchedAt}/>
     {!routeOnlyMode&&<div className="map-key"><span className="cluster-key">Numbered groups: mapped stations. Tap to zoom.</span><span className="unknown-color">● Unknown status</span><span className="recent-color">● Recent observation</span><span>● Live operator status</span><span className="food-color">● Food</span><span className="restroom-color">● Restrooms</span><span className="shopping-color">● Shopping</span><span className="route-color">● Search center{!tripAssessment||!showRisk?' / road route':''}</span>{smartPlan?.selected?.backup?.route&&<span className="backup-color">Dashed path: main → backup</span>}</div>}
-    {navigationTarget&&<section className="navigation-mode-banner" role="status"><div><p className="eyebrow">VoltRoute navigation mode</p><h3>{navigationTarget.name}</h3><p>{navigationDistanceMiles!==null?`${navigationDistanceMiles.toFixed(1)} road miles`:''}{navigationDistanceMiles!==null&&navigationEtaMinutes!==null?' · ':''}{navigationEtaMinutes!==null?`~${navigationEtaMinutes} min`:''}{navigationStartedAt?` · started ${evidenceTime(navigationStartedAt)}`:''}</p></div><div className="navigation-mode-actions"><Button variant="outline" type="button" onClick={exitRouteOnlyView}>Show charger list</Button><Button variant="outline" type="button" onClick={stopNavigationMode}>Stop</Button></div></section>}
+    {navigationTargetName&&<section className="navigation-mode-banner" role="status"><div><p className="eyebrow">VoltRoute navigation mode</p><h3>{navigationTargetName}</h3><p>{navigationDistanceMiles!==null?`${navigationDistanceMiles.toFixed(1)} road miles`:''}{navigationDistanceMiles!==null&&navigationEtaMinutes!==null?' · ':''}{navigationEtaMinutes!==null?`~${navigationEtaMinutes} min`:''}{navigationStartedAt?` · started ${evidenceTime(navigationStartedAt)}`:''}</p></div><div className="navigation-mode-actions"><Button variant="outline" type="button" onClick={exitRouteOnlyView}>Show charger list</Button><Button variant="outline" type="button" onClick={stopNavigationMode}>Stop</Button></div></section>}
     {!routeOnlyMode&&smartPlan&&<TripIntelligencePanel result={smartPlan} assessment={tripAssessment} now={currentTime}/>} 
     {!routeOnlyMode&&tripAssessment&&<TripAssessmentPanel assessment={tripAssessment} showRisk={showRisk} focusedId={focusedRisk} onShowRisk={show=>{setShowRisk(show);if(!show)setFocusedRisk(null);}} onFocus={setFocusedRisk}/>} 
     {!routeOnlyMode&&smartPlan&&<TripCostPanel result={smartPlan} now={currentTime}/>} 
