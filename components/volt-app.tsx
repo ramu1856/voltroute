@@ -23,7 +23,7 @@ import { startGoogleOAuthSignIn } from '@/lib/google-oauth';
 import type { DirectorySnapshot } from '@/lib/directory-cache';
 import { evaluateAvailability, evaluatePrice, evidenceTime, type OperatorObservation } from '@/lib/station-evidence';
 import { evaluateStationHours, matchesHoursFilter } from '@/lib/opening-hours';
-import { chicago, detroit, defaultProfile, chargingCheckpoints, type Point, type Station, type Amenity, type Profile, type TripInput, type RoadRoute } from '@/lib/ev';
+import { chicago, detroit, defaultProfile, chargingCheckpoints, miles, type Point, type Station, type Amenity, type Profile, type TripInput, type RoadRoute } from '@/lib/ev';
 import { vehicleCatalog, vehicleMakes, vehicleTypes, type CatalogVehicle, type VehicleType } from '@/lib/vehicles';
 
 const ChargerMap = dynamic(() => import('./charger-map'), { ssr: false, loading: () => <div className="real-map" aria-busy="true">Loading map…</div> });
@@ -106,6 +106,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const [accountError,setAccountError]=useState(''),[stations,setStations]=useState<Station[]>([]),[selected,setSelected]=useState<Station|null>(null),[amenities,setAmenities]=useState<Amenity[]>([]);
  const [loading,setLoading]=useState(false),[amenitiesLoading,setAmenitiesLoading]=useState(false),[liveLoading,setLiveLoading]=useState(false),[error,setError]=useState(''),[amenityError,setAmenityError]=useState(''),[liveError,setLiveError]=useState(''),[fetchedAt,setFetchedAt]=useState('');
  const [directoryNotice,setDirectoryNotice]=useState(''),[amenityNotice,setAmenityNotice]=useState(''),[amenityFetchedAt,setAmenityFetchedAt]=useState(''),[searchedRadius,setSearchedRadius]=useState('160934');
+ const [routeStationsBusy,setRouteStationsBusy]=useState(false),[routeStationsError,setRouteStationsError]=useState(''),[routeStationsMode,setRouteStationsMode]=useState(false);
  const [filter,setFilter]=useState(''),[fast,setFast]=useState(false),[match,setMatch]=useState(false),[freeOnly,setFreeOnly]=useState(false),[radius,setRadius]=useState('160934');
  const [road,setRoad]=useState<RoadRoute|null>(null),[selectedRoad,setSelectedRoad]=useState<RoadRoute|null>(null),[selectedRoadBusy,setSelectedRoadBusy]=useState(false),[routeBusy,setRouteBusy]=useState(false),[routeError,setRouteError]=useState(''),[tripSnapshot,setTripSnapshot]=useState<TripInput|null>(null);
  const [smartPlan,setSmartPlan]=useState<SmartStopResult|null>(null);
@@ -116,6 +117,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const accessToken=session?.access_token;
  const signedIn=!!session;
  const currentTime=hoursClock??0;
+ const routeStationsSnapshot=useRef<{stations:Station[];center:Point;fetchedAt:string;directoryNotice:string;searchedRadius:string;selectedId:string|null}|null>(null);
  useEffect(()=>{
   let cancelled=false;
   const sharedTrip=parseSharedTripFromUrl();
@@ -151,6 +153,10 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
   const cacheKey=`${point.lat.toFixed(4)}:${point.lon.toFixed(4)}:${chosenRadius}`;
   const cached=stationSnapshotCache.current.get(cacheKey);
   stationRequest.current?.abort();const controller=new AbortController();stationRequest.current=controller;
+  routeStationsSnapshot.current=null;
+  setRouteStationsMode(false);
+  setRouteStationsError('');
+  setRouteStationsBusy(false);
   setSmartPlan(null);const id=++requestId.current;setLoading(!cached);setError('');setCenter(point);setSearchedRadius(chosenRadius);
   if(cached){setStations(cached.data);setFetchedAt(cached.fetchedAt);setDirectoryNotice(cached.notice||'Showing cached listings while the latest map data refreshes.');setSelected(current=>cached.data.find(s=>s.id===current?.id)||cached.data[0]||null);}
   else setDirectoryNotice('');
@@ -181,7 +187,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  },[selectedId,selectedLat,selectedLon,amenityRetry]);
  useEffect(()=>{const controller=new AbortController();void Promise.resolve().then(async()=>{if(!selectedId||selectedLat===undefined||selectedLon===undefined){setSelectedRoad(null);setSelectedRoadBusy(false);return;}setSelectedRoad(null);setSelectedRoadBusy(true);try{const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${origin.lat}&lon=${origin.lon}&toLat=${selectedLat}&toLon=${selectedLon}`,{signal:controller.signal});if(!controller.signal.aborted)setSelectedRoad({...r.data,fetchedAt:r.fetchedAt});}catch{if(!controller.signal.aborted)setSelectedRoad(null);}finally{if(!controller.signal.aborted)setSelectedRoadBusy(false);}});return()=>controller.abort();},[selectedId,selectedLat,selectedLon,origin.lat,origin.lon]);
 
- useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.current++;setRoad(null);setSmartPlan(null);setTripSnapshot(null);setRouteError('');setRouteBusy(false);}});return()=>{cancelled=true;};},[origin,destination,profile,battery]);
+ useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.current++;setRoad(null);setSmartPlan(null);setTripSnapshot(null);setRouteError('');setRouteBusy(false);setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);routeStationsSnapshot.current=null;}});return()=>{cancelled=true;};},[origin,destination,profile,battery]);
  useEffect(()=>{if(!smartPlan||!isSmartStopExpired(smartPlan,currentTime))return;let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSmartPlan(null);});return()=>{cancelled=true;};},[smartPlan,currentTime]);
  useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSmartPlan(null);});return()=>{cancelled=true;};},[reports,enteredRates]);
  useEffect(()=>{if(!((selected&&!visible.some(s=>s.id===selected.id))||(!selected&&visible.length)))return;let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSelected(visible[0]||null);});return()=>{cancelled=true;};},[visible,selected]);
@@ -227,8 +233,65 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
   void loadStations(chicago);
   toast.info('Trip setup reset to default values.');
  }
+ function restoreLocalStationView(){
+  const snapshot=routeStationsSnapshot.current;
+  if(!snapshot){setRouteStationsMode(false);return;}
+  setStations(snapshot.stations);
+  setCenter(snapshot.center);
+  setFetchedAt(snapshot.fetchedAt);
+  setDirectoryNotice(snapshot.directoryNotice);
+  setSearchedRadius(snapshot.searchedRadius);
+  setSelected(snapshot.stations.find(station=>station.id===snapshot.selectedId)||snapshot.stations[0]||null);
+  routeStationsSnapshot.current=null;
+  setRouteStationsMode(false);
+  setRouteStationsError('');
+  setRouteStationsBusy(false);
+  toast.info('Returned to the previous local station view.');
+ }
+ async function showRouteStationDots(){
+  if(!road||!tripSnapshot){toast.info('Calculate the road route first, then load route charger dots.');return;}
+  setRouteStationsBusy(true);setRouteStationsError('');
+  try{
+   if(!routeStationsMode&&!routeStationsSnapshot.current)routeStationsSnapshot.current={stations,center,fetchedAt,directoryNotice,searchedRadius,selectedId:selected?.id||null};
+   const checkpoints=chargingCheckpoints(road,tripSnapshot.profile,tripSnapshot.battery);
+   let sampled=checkpoints;
+   const maxRouteChecks=8;
+   if(sampled.length>maxRouteChecks){
+    const stride=Math.ceil(sampled.length/maxRouteChecks);
+    sampled=sampled.filter((_,index)=>index%stride===0).slice(0,maxRouteChecks);
+   }
+   const routePoints=[
+    {lat:tripSnapshot.origin.lat,lon:tripSnapshot.origin.lon,label:'Trip start corridor'},
+    ...sampled.map((point,index)=>({lat:point.lat,lon:point.lon,label:`Route check ${index+1}`})),
+    {lat:tripSnapshot.destination.lat,lon:tripSnapshot.destination.lon,label:'Trip destination corridor'},
+   ];
+   const uniquePoints=routePoints.filter((point,index,list)=>list.findIndex(candidate=>Math.abs(candidate.lat-point.lat)<.01&&Math.abs(candidate.lon-point.lon)<.01)===index);
+   const snapshots=await Promise.all(uniquePoints.map(async point=>api<DirectorySnapshot<Station[]>>(`/api/explore?action=stations&lat=${point.lat}&lon=${point.lon}&radius=64374`)));
+   const byId=new Map<string,Station>();
+   for(const snapshot of snapshots)for(const station of snapshot.data)if(!byId.has(station.id))byId.set(station.id,{...station,distance:miles(tripSnapshot.origin,{lat:station.lat,lon:station.lon})});
+   const merged=Array.from(byId.values()).sort((a,b)=>a.distance-b.distance).slice(0,900);
+   if(!merged.length)throw new Error('No mapped chargers were found for this route corridor.');
+   const midpoint={lat:Number(((tripSnapshot.origin.lat+tripSnapshot.destination.lat)/2).toFixed(4)),lon:Number(((tripSnapshot.origin.lon+tripSnapshot.destination.lon)/2).toFixed(4)),label:'Route charger corridor'};
+   setStations(merged);
+   setCenter(midpoint);
+   setSelected(current=>merged.find(station=>station.id===current?.id)||merged[0]||null);
+   setSearchedRadius('64374');
+   setFetchedAt(new Date().toISOString());
+   setDirectoryNotice(`Route charger dots loaded from ${uniquePoints.length} route checks. Showing ${merged.length} unique mapped stations near this trip corridor.`);
+   setRouteStationsMode(true);
+   toast.success('Route charger dots are now visible on the map.');
+  }catch(error){
+   const message=error instanceof Error?error.message:'Route charger dots could not be loaded right now.';
+   setRouteStationsError(message);
+   toast.error(message);
+  }finally{setRouteStationsBusy(false);}
+ }
  function showSmartStop(result:SmartStopResult,view:'main'|'backup'='main'){
   stationRequest.current?.abort();
+  routeStationsSnapshot.current=null;
+  setRouteStationsMode(false);
+  setRouteStationsError('');
+  setRouteStationsBusy(false);
   requestId.current++;routeId.current++;setLoading(false);setRouteBusy(false);setRouteError('');setError('');setRoad(null);setTripSnapshot(null);setSmartPlan(result);
   if(result.selected||result.candidates.length){
    setDirectoryNotice('');
@@ -239,7 +302,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
    setSelected(view==='backup'&&backup?backup.station:result.selected?.station||listed[0]||null);setFetchedAt(result.directoryFetchedAt||'');setCenter({...result.input.origin,label:result.selected?'Smart Stop candidates':'Candidates to review, not recommendations'});
   }
  }
- async function plan(input:TripInput={origin,destination,profile,battery}){setSmartPlan(null);const id=++routeId.current;setRouteBusy(true);setRouteError('');setRoad(null);try{const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${input.origin.lat}&lon=${input.origin.lon}&toLat=${input.destination.lat}&toLon=${input.destination.lon}`);if(id!==routeId.current)return;setRoad({...r.data,fetchedAt:r.fetchedAt});setTripSnapshot(input);}catch(e){if(id===routeId.current)setRouteError((e as Error).message);}finally{if(id===routeId.current)setRouteBusy(false);}}
+ async function plan(input:TripInput={origin,destination,profile,battery}){setSmartPlan(null);routeStationsSnapshot.current=null;setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);const id=++routeId.current;setRouteBusy(true);setRouteError('');setRoad(null);try{const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${input.origin.lat}&lon=${input.origin.lon}&toLat=${input.destination.lat}&toLon=${input.destination.lon}`);if(id!==routeId.current)return;setRoad({...r.data,fetchedAt:r.fetchedAt});setTripSnapshot(input);}catch(e){if(id===routeId.current)setRouteError((e as Error).message);}finally{if(id===routeId.current)setRouteBusy(false);}}
  async function save(kind:Saved['kind'],payload:Saved['payload']){if(!accessToken){void requestGoogleSignIn();return;}setSaving(true);try{await api('/api/account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,payload})},accessToken);await loadAccount();toast.success('Saved to your account.');}catch(e){toast.error((e as Error).message);}finally{setSaving(false);}}
  async function remove(id:string){if(!accessToken){void requestGoogleSignIn();return;}setSaving(true);try{await api(`/api/account?id=${encodeURIComponent(id)}`,{method:'DELETE'},accessToken);setSaved(items=>items.filter(i=>i.id!==id));toast.success('Removed from saved items.');}catch(e){toast.error((e as Error).message);}finally{setSaving(false);}}
  async function report(status:DriverReport['status']){if(!selected)return;if(!accessToken){void requestGoogleSignIn();return;}const payload={sourceId:selected.id,stationName:selected.name,status,note:''};setSaving(true);try{const result=await api<{updated:number}>('/api/account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'report',payload})},accessToken);setReports(r=>({...r,[payload.sourceId]:{...payload,reportedAt:result.updated}}));setHoursClock(Date.now());toast.success('Your timestamped station report was saved.');}catch(e){toast.error((e as Error).message);}finally{setSaving(false);}}
@@ -339,6 +402,9 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
      <p className="muted-small">Share link includes origin, destination, EV profile and battery so anyone can reopen the same trip setup.</p>
      {routeError&&<p className="error-text" role="alert">{routeError}</p>}
      {road&&tripSnapshot&&<section className="route-result"><h3>{Math.round(road.miles)} miles · {Math.floor(road.minutes/60)}h {Math.round(road.minutes%60)}m driving</h3><p>{tripSnapshot.origin.label} → {tripSnapshot.destination.label}</p><strong>{checkpoints.length} estimated charging check{checkpoints.length===1?'':'s'}</strong><p className="muted-small">Planning estimate using your entered range, a 15% reserve and charging to 80%. No traffic, weather, detours or charge time included. This is not a verified EV itinerary.</p>
+     <div className="trip-route-actions"><Button variant="outline" className="full" disabled={routeStationsBusy} onClick={()=>void showRouteStationDots()}><MapPin/>{routeStationsBusy?'Loading route charger dots…':'Show route chargers as map dots'}</Button>{routeStationsMode&&<Button variant="outline" className="full" onClick={restoreLocalStationView}><RotateCcw/>Back to previous station view</Button>}</div>
+     {routeStationsMode&&<p className="muted-small">Route charger dots mode is active. The map and list now focus on chargers near the full road corridor.</p>}
+     {routeStationsError&&<p className="error-text" role="alert">{routeStationsError}</p>}
      {checkpoints[0]&&<Button className="full" onClick={()=>loadStations({...checkpoints[0],label:`Next charging area near mile ${checkpoints[0].mile}`})}><Zap/>Find chargers at next stop</Button>}{checkpoints.slice(0,8).map((p,i)=><Button key={i} variant="outline" className="checkpoint" onClick={()=>loadStations({...p,label:`Route check ${i+1}, near mile ${p.mile}`})}>Find chargers near mile {p.mile}<ArrowRight/></Button>)}{checkpoints.length>8&&<p>Showing the first 8 checks. Break this route into shorter trips.</p>}
      <Button variant="secondary" className="full" disabled={saving} onClick={()=>save('trip',tripSnapshot)}><Bookmark/>Save trip</Button><a className="text-link" href={`https://www.google.com/maps/dir/?api=1&origin=${tripSnapshot.origin.lat},${tripSnapshot.origin.lon}&destination=${tripSnapshot.destination.lat},${tripSnapshot.destination.lon}&travelmode=driving`} target="_blank" rel="noreferrer">Open road directions ↗</a></section>}
     </TabsContent>

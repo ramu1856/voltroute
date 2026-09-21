@@ -259,6 +259,7 @@
 .trip-setup-card li svg{flex-shrink:0;margin-top:2px}
 .trip-check-ok{color:#c5f5d0}
 .trip-check-pending{color:#efcc9f}
+.trip-route-actions{display:grid;gap:8px}
 @media(max-width:540px){.trip-action-row{grid-template-columns:1fr}}
 
 .trip-intelligence{padding:20px;border-bottom:1px solid #46614f;background:#10251a;min-width:0;overflow-wrap:anywhere}
