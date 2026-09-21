@@ -6,11 +6,11 @@ import { evidenceTime, type AvailabilityInfo } from '@/lib/station-evidence';
 import { riskStyles, type RiskSection } from '@/lib/trip-assessment';
 import 'leaflet/dist/leaflet.css';
 type MapStyle='road'|'satellite';
-export default function ChargerMap({center,stations,selected,amenities,route,routeFocusToken,navigationRecenterToken,navigationMode,navigationLocation,backupRoute,mainId,backupId,riskSections,focusedRiskId,onRiskFocus,availability,onSelect,onSearch,fetchedAt}:{center:Point;stations:Station[];selected:Station|null;amenities:Amenity[];route:RoadRoute|null;routeFocusToken:number;navigationRecenterToken:number;navigationMode:boolean;navigationLocation:{lat:number;lon:number;accuracyMeters:number|null;heading:number|null}|null;backupRoute:RoadRoute|null;mainId?:string;backupId?:string;riskSections:RiskSection[];focusedRiskId:string|null;onRiskFocus:(id:string)=>void;availability:Map<string,AvailabilityInfo>;onSelect:(s:Station)=>void;onSearch:(p:Point)=>void;fetchedAt:string}) {
+export default function ChargerMap({center,stations,selected,amenities,route,routeFocusToken,navigationRecenterToken,navigationRouteKey,navigationMode,navigationLocation,backupRoute,mainId,backupId,riskSections,focusedRiskId,onRiskFocus,availability,onSelect,onSearch,fetchedAt}:{center:Point;stations:Station[];selected:Station|null;amenities:Amenity[];route:RoadRoute|null;routeFocusToken:number;navigationRecenterToken:number;navigationRouteKey:string|null;navigationMode:boolean;navigationLocation:{lat:number;lon:number;accuracyMeters:number|null;heading:number|null}|null;backupRoute:RoadRoute|null;mainId?:string;backupId?:string;riskSections:RiskSection[];focusedRiskId:string|null;onRiskFocus:(id:string)=>void;availability:Map<string,AvailabilityInfo>;onSelect:(s:Station)=>void;onSearch:(p:Point)=>void;fetchedAt:string}) {
  const container=useRef<HTMLDivElement>(null), map=useRef<Leaflet.Map|null>(null), L=useRef<typeof Leaflet|null>(null), layer=useRef<Leaflet.LayerGroup|null>(null),routeLayer=useRef<Leaflet.LayerGroup|null>(null),navigationLayer=useRef<Leaflet.LayerGroup|null>(null),initialCenter=useRef(center);
  const baseLayers=useRef<{road:Leaflet.TileLayer|null;roadFallback:Leaflet.TileLayer|null;satellite:Leaflet.TileLayer|null;labels:Leaflet.TileLayer|null}>({road:null,roadFallback:null,satellite:null,labels:null});
  const roadFallbackActive=useRef(false),mapStyleRef=useRef<MapStyle>('road');
- const lastNavigationRouteRef=useRef<RoadRoute|null>(null);
+ const lastNavigationRouteRef=useRef<RoadRoute|null>(null),lastNavigationRouteKeyRef=useRef<string|null>(null);
  const [ready,setReady]=useState(false),[error,setError]=useState(''),[viewRevision,setViewRevision]=useState(0),[mapStyle,setMapStyle]=useState<MapStyle>('road');
  const visibleBounds=useRef<[number,number][]>([]);
  const choose=useRef(onSelect),focusRisk=useRef(onRiskFocus);
@@ -56,8 +56,16 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
  useEffect(()=>{if(ready)map.current?.setView([center.lat,center.lon],12);},[ready,center.lat,center.lon]);
  const routeHasGeometry=!!route?.coordinates?.length&&route.coordinates.length>1;
  useEffect(()=>{
+  if(!navigationMode)return;
+  if(lastNavigationRouteKeyRef.current!==navigationRouteKey){
+   lastNavigationRouteRef.current=null;
+   routeLayer.current?.clearLayers();
+   lastNavigationRouteKeyRef.current=navigationRouteKey;
+  }
+ },[navigationMode,navigationRouteKey]);
+ useEffect(()=>{
   if(navigationMode&&routeHasGeometry&&route)lastNavigationRouteRef.current=route;
- },[navigationMode,route,routeHasGeometry]);
+ },[navigationMode,route,routeHasGeometry,navigationRouteKey]);
  useEffect(()=>{
   if(!ready||!L.current||!layer.current)return;const lib=L.current;layer.current.clearLayers();
   const bounds:[number,number][]=[];
@@ -164,6 +172,7 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
  useEffect(()=>{
   if(navigationMode)return;
   lastNavigationRouteRef.current=null;
+  lastNavigationRouteKeyRef.current=null;
   routeLayer.current?.clearLayers();
   navigationLayer.current?.clearLayers();
  },[navigationMode]);
