@@ -326,6 +326,8 @@
 .navigation-bottom-primary strong{font-size:.98rem;line-height:1.02}
 .navigation-bottom-primary span{font-size:.68rem;line-height:1.16;color:#d1e8da}
 .navigation-bottom-primary small{font-size:.58rem;line-height:1.12;color:#a7c7b8}
+.navigation-bottom-actions{display:flex;align-items:center;gap:6px}
+.navigation-recenter-btn{min-width:64px;height:28px;padding:0 9px;border-radius:999px;font-size:.68rem}
 .navigation-exit-btn{min-width:56px;height:28px;padding:0 9px;border-radius:999px;background:#dd4d45;border-color:#dd4d45;color:#fff;font-size:.7rem}
 .navigation-exit-btn:hover{background:#c93f39;border-color:#c93f39}
 @media(max-width:720px){
@@ -337,6 +339,7 @@
  .navigation-bottom-primary strong{font-size:.9rem}
  .navigation-bottom-primary span{font-size:.63rem}
  .navigation-bottom-primary small{font-size:.54rem}
+ .navigation-recenter-btn{min-width:58px;height:26px;font-size:.64rem}
  .navigation-exit-btn{min-width:50px;height:26px;padding:0 8px;font-size:.66rem}
 }
 .vr-workspace.route-only{grid-template-columns:minmax(0,1fr)}

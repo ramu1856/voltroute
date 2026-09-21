@@ -126,7 +126,12 @@ export default function ChargerMap({center,stations,selected,amenities,route,rou
    lib.polyline([[navigationLocation.lat,navigationLocation.lon],[tipLat,tipLon]],{color:'#2f6bff',weight:4,lineCap:'round'}).addTo(navigationLayer.current);
   }
  },[ready,navigationMode,navigationLocation,navigationLocation?.lat,navigationLocation?.lon,navigationLocation?.accuracyMeters,navigationLocation?.heading]);
- useEffect(()=>{const focused=riskSections.find(section=>section.id===focusedRiskId);const coordinates=focused?.coordinates||[...(route?.coordinates||[]),...(backupRoute?.coordinates||[])];if(ready&&coordinates.length)map.current?.fitBounds(coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[35,35],maxZoom:14});},[ready,route,backupRoute,focusedRiskId,riskSections]);
+ useEffect(()=>{
+  if(navigationMode)return;
+  const focused=riskSections.find(section=>section.id===focusedRiskId);
+  const coordinates=focused?.coordinates||[...(route?.coordinates||[]),...(backupRoute?.coordinates||[])];
+  if(ready&&coordinates.length)map.current?.fitBounds(coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[35,35],maxZoom:14});
+ },[ready,route,backupRoute,focusedRiskId,riskSections,navigationMode]);
  useEffect(()=>{
   if(!ready||!route?.coordinates.length)return;
   map.current?.fitBounds(route.coordinates.map(([lon,lat])=>[lat,lon] as [number,number]),{padding:[35,35],maxZoom:14});
