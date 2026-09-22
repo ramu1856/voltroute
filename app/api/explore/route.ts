@@ -115,9 +115,9 @@ export async function GET(request:Request) {
       return normalizeAmenities(elements,point);
     });
     if(action==='stations'&&usedTomTomFallback){
-      return Response.json(result,{headers:{'Cache-Control':'private, no-store'}});
+      return Response.json(result,{headers:{'Cache-Control':'public, max-age=120, stale-while-revalidate=600'}});
     }
-    return Response.json(result,{headers:{'Cache-Control':'private, no-store'}});
+    return Response.json(result,{headers:{'Cache-Control':'public, max-age=120, stale-while-revalidate=600'}});
   }
   if(action==='route') {
     const from=coords.parse({lat:q.get('lat')??undefined,lon:q.get('lon')??undefined});const to=coords.parse({lat:q.get('toLat')??undefined,lon:q.get('toLon')??undefined});
@@ -127,7 +127,7 @@ export async function GET(request:Request) {
       const json=await fetchJson(url.href) as {code:string;routes:{distance:number;duration:number;geometry:{coordinates:number[][]}}[]};
       if(json.code!=='Ok'||!json.routes?.length)throw new ServiceError('No driving route was found between these locations.',404);
       const r=json.routes[0];return {coordinates:r.geometry.coordinates,miles:r.distance/1609.344,minutes:r.duration/60};
-    });return Response.json(result);
+    });return Response.json(result,{headers:{'Cache-Control':'public, max-age=300, stale-while-revalidate=1800'}});
   }
   throw new ServiceError('Unknown action.',400);
  }catch(error){return failure(error instanceof z.ZodError?new ServiceError('Please check the location or search input.',400):error);}

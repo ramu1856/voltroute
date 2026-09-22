@@ -132,6 +132,7 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const [filter,setFilter]=useState(''),[fast,setFast]=useState(false),[match,setMatch]=useState(false),[freeOnly,setFreeOnly]=useState(false),[radius,setRadius]=useState('160934');
  const [road,setRoad]=useState<RoadRoute|null>(null),[selectedRoad,setSelectedRoad]=useState<RoadRoute|null>(null),[selectedRoadBusy,setSelectedRoadBusy]=useState(false),[routeBusy,setRouteBusy]=useState(false),[routeError,setRouteError]=useState(''),[tripSnapshot,setTripSnapshot]=useState<TripInput|null>(null);
  const [expandedChargerId,setExpandedChargerId]=useState<string|null>(null),[activeConnectorByCharger,setActiveConnectorByCharger]=useState<Record<string,string>>({});
+const [detailsReady,setDetailsReady]=useState(false);
  const [smartPlan,setSmartPlan]=useState<SmartStopResult|null>(null);
  const [showRisk,setShowRisk]=useState(true),[focusedRisk,setFocusedRisk]=useState<string|null>(null);
  const [saving,setSaving]=useState(false),[amenityRetry,setAmenityRetry]=useState(0),[locating,setLocating]=useState(false);
@@ -141,6 +142,10 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const signedIn=!!session;
  const currentTime=hoursClock??0;
  const routeStationsSnapshot=useRef<{stations:Station[];center:Point;fetchedAt:string;directoryNotice:string;searchedRadius:string;selectedId:string|null}|null>(null);
+const bootstrappedStationsRef=useRef(false);
+const liveAutoRefreshRef=useRef<Map<string,number>>(new Map());
+const amenitiesCacheRef=useRef<Map<string,{data:Amenity[];notice:string;fetchedAt:string;cachedAt:number}>>(new Map());
+const selectedRoadCacheRef=useRef<Map<string,RoadRoute>>(new Map());
  useEffect(()=>{
   let cancelled=false;
   const shouldOpenTripTab=wantsTripTabFromUrl();
@@ -193,16 +198,31 @@ const drivingDistanceByStation=useMemo(()=>selected&&selectedRoad?{[selected.id]
  async function loadAccount(){if(!accessToken)return [] as Saved[];try{const r=await api<{user:{name:string};items:Saved[]}>('/api/account',undefined,accessToken);setAccount(r.user.name);setSaved(r.items);setReports(Object.fromEntries(r.items.filter(i=>i.kind==='report').map(i=>[(i.payload as DriverReport).sourceId,{...i.payload as DriverReport,reportedAt:i.updated}])));setAccountError('');return r.items;}catch(e){setAccountError((e as Error).message);return [] as Saved[];}}
  async function loadStations(point:Point=origin,chosenRadius=radius){
   const cacheKey=`${point.lat.toFixed(4)}:${point.lon.toFixed(4)}:${chosenRadius}`;
-  const cached=stationSnapshotCache.current.get(cacheKey);
+  let cached=stationSnapshotCache.current.get(cacheKey);
+  if(!cached&&typeof window!=='undefined'){
+    try{
+      const raw=window.localStorage.getItem(`voltroute:stations:${cacheKey}`);
+      if(raw){
+        const parsed=JSON.parse(raw) as DirectorySnapshot<Station[]>;
+        if(Array.isArray(parsed.data)&&typeof parsed.fetchedAt==='string'){
+          cached={...parsed,notice:parsed.notice||'Showing cached listings while the latest map data refreshes.'};
+          stationSnapshotCache.current.set(cacheKey,cached);
+        }
+      }
+    }catch{/* Ignore malformed local cache entries. */}
+  }
   stationRequest.current?.abort();const controller=new AbortController();stationRequest.current=controller;
   routeStationsSnapshot.current=null;
   setRouteStationsMode(false);
   setRouteStationsError('');
   setRouteStationsBusy(false);
+  setDetailsReady(false);
+  setAmenities([]);
+  setSelectedRoad(null);
   setSmartPlan(null);const id=++requestId.current;setLoading(!cached);setError('');setCenter(point);setSearchedRadius(chosenRadius);
   if(cached){setStations(cached.data);setFetchedAt(cached.fetchedAt);setDirectoryNotice(cached.notice||'Showing cached listings while the latest map data refreshes.');setSelected(current=>cached.data.find(s=>s.id===current?.id)||cached.data[0]||null);}
   else setDirectoryNotice('');
-  try{const r=await api<DirectorySnapshot<Station[]>>(`/api/explore?action=stations&lat=${point.lat}&lon=${point.lon}&radius=${chosenRadius}`,{signal:controller.signal});if(id!==requestId.current||controller.signal.aborted)return;stationSnapshotCache.current.set(cacheKey,r);setStations(r.data);setFetchedAt(r.fetchedAt);setDirectoryNotice(r.notice||'');setSelected(current=>r.data.find(s=>s.id===current?.id)||r.data[0]||null);}
+  try{const r=await api<DirectorySnapshot<Station[]>>(`/api/explore?action=stations&lat=${point.lat}&lon=${point.lon}&radius=${chosenRadius}`,{signal:controller.signal});if(id!==requestId.current||controller.signal.aborted)return;stationSnapshotCache.current.set(cacheKey,r);if(typeof window!=='undefined'){try{window.localStorage.setItem(`voltroute:stations:${cacheKey}`,JSON.stringify(r));}catch{/* localStorage can fail in private mode/quota */}}setStations(r.data);setFetchedAt(r.fetchedAt);setDirectoryNotice(r.notice||'');setSelected(current=>r.data.find(s=>s.id===current?.id)||r.data[0]||null);}
   catch(e){if(id===requestId.current&&!controller.signal.aborted){if(cached){setError('');setDirectoryNotice('Showing cached listings because the latest refresh failed. Retry in a moment.');}else setError((e as Error).message);}}
   finally{if(id===requestId.current&&!controller.signal.aborted)setLoading(false);}
  }
@@ -222,12 +242,113 @@ const drivingDistanceByStation=useMemo(()=>selected&&selectedRoad?{[selected.id]
  }
  useEffect(()=>{loadStationsRef.current=loadStations;loadAccountRef.current=loadAccount;selectedRef.current=selected;refreshLiveRef.current=refreshLive;});
  useEffect(()=>{try{const client=supabaseBrowser({url:supabaseUrl,key:supabaseKey});void client.auth.getSession().then(({data})=>{setSession(data.session);setAuthReady(true);}).catch(()=>setAuthReady(true));const {data}=client.auth.onAuthStateChange((_event,next)=>{setSession(next);setAuthReady(true);if(next)setShowAuth(false);});return()=>data.subscription.unsubscribe();}catch{queueMicrotask(()=>setAuthReady(true));return;}},[supabaseUrl,supabaseKey]);
- useEffect(()=>{if(!authReady)return;let cancelled=false;queueMicrotask(()=>{if(cancelled)return;if(signedIn)void loadAccountRef.current().then(items=>{if(cancelled)return;const p=items.find(i=>i.kind==='profile');if(p){const savedProfile=p.payload as Profile;setProfile(savedProfile);const match=vehicleCatalog.find(v=>v.name===savedProfile.name);if(match){setVehicleType(match.type);setVehicleMake(match.make);setVehicleModel(match.model);setCustomVehicle(false);}else setCustomVehicle(true);}});else{setAccount('');setSaved([]);setReports({});}void loadStationsRef.current(chicago);});return()=>{cancelled=true;};},[signedIn,authReady]);
+useEffect(()=>{if(bootstrappedStationsRef.current)return;bootstrappedStationsRef.current=true;void loadStationsRef.current(chicago);},[]);
+useEffect(()=>{if(!authReady)return;let cancelled=false;queueMicrotask(()=>{if(cancelled)return;if(signedIn)void loadAccountRef.current().then(items=>{if(cancelled)return;const p=items.find(i=>i.kind==='profile');if(p){const savedProfile=p.payload as Profile;setProfile(savedProfile);const match=vehicleCatalog.find(v=>v.name===savedProfile.name);if(match){setVehicleType(match.type);setVehicleMake(match.make);setVehicleModel(match.model);setCustomVehicle(false);}else setCustomVehicle(true);}});else{setAccount('');setSaved([]);setReports({});}});return()=>{cancelled=true;};},[signedIn,authReady]);
  const selectedId=selected?.id,selectedLat=selected?.lat,selectedLon=selected?.lon;
- useEffect(()=>{const station=selectedRef.current;if(!station)return;const timer=window.setTimeout(()=>{void refreshLiveRef.current(station);},250);return()=>window.clearTimeout(timer);},[selectedId,profile.connector]);
- useEffect(()=>{const controller=new AbortController();void Promise.resolve().then(async()=>{if(controller.signal.aborted)return;setAmenities([]);setAmenityError('');setAmenityNotice('');setAmenityFetchedAt('');if(!selectedId){setAmenitiesLoading(false);return;}setAmenitiesLoading(true);try{const r=await api<DirectorySnapshot<Amenity[]>>(`/api/explore?action=amenities&lat=${selectedLat}&lon=${selectedLon}`,{signal:controller.signal});if(!controller.signal.aborted){setAmenities(r.data);setAmenityNotice(r.notice||'');setAmenityFetchedAt(r.fetchedAt);}}catch(e){if(!controller.signal.aborted)setAmenityError((e as Error).message);}finally{if(!controller.signal.aborted)setAmenitiesLoading(false);}});return()=>controller.abort();
- },[selectedId,selectedLat,selectedLon,amenityRetry]);
-useEffect(()=>{const controller=new AbortController();void Promise.resolve().then(async()=>{if(!selectedId||selectedLat===undefined||selectedLon===undefined){setSelectedRoad(null);setSelectedRoadBusy(false);return;}setSelectedRoad(null);setSelectedRoadBusy(true);try{const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${origin.lat}&lon=${origin.lon}&toLat=${selectedLat}&toLon=${selectedLon}`,{signal:controller.signal});if(!controller.signal.aborted){const candidate={...r.data,fetchedAt:r.fetchedAt};setSelectedRoad(hasRenderableRoute(candidate)?candidate:null);}}catch{if(!controller.signal.aborted)setSelectedRoad(null);}finally{if(!controller.signal.aborted)setSelectedRoadBusy(false);}});return()=>controller.abort();},[selectedId,selectedLat,selectedLon,origin.lat,origin.lon]);
+useEffect(()=>{
+ if(!stations.length)return;
+ if(detailsReady)return;
+ const hydrate=()=>setDetailsReady(true);
+ if(typeof window!=='undefined'&&'requestIdleCallback' in window){
+  const idleId=(window as Window & {requestIdleCallback:(callback:IdleRequestCallback,options?:IdleRequestOptions)=>number}).requestIdleCallback(()=>hydrate(),{timeout:450});
+  return()=>{
+   (window as Window & {cancelIdleCallback?:(id:number)=>void}).cancelIdleCallback?.(idleId);
+  };
+ }
+ const timeoutId=window.setTimeout(hydrate,250);
+ return()=>{if(timeoutId!==undefined)window.clearTimeout(timeoutId);};
+},[stations.length,detailsReady]);
+useEffect(()=>{
+ if(!detailsReady)return;
+ const station=selectedRef.current;
+ if(!station)return;
+ const refreshKey=`${station.id}:${profile.connector}`;
+ const last=liveAutoRefreshRef.current.get(refreshKey)||0;
+ if(Date.now()-last<60000)return;
+ liveAutoRefreshRef.current.set(refreshKey,Date.now());
+ const timer=window.setTimeout(()=>{void refreshLiveRef.current(station);},250);
+ return()=>window.clearTimeout(timer);
+},[selectedId,profile.connector,detailsReady]);
+useEffect(()=>{
+ const controller=new AbortController();
+ void Promise.resolve().then(async()=>{
+  if(controller.signal.aborted)return;
+  setAmenityError('');
+  setAmenityNotice('');
+  setAmenityFetchedAt('');
+  if(!selectedId||selectedLat===undefined||selectedLon===undefined){
+   setAmenities([]);
+   setAmenitiesLoading(false);
+   return;
+  }
+  if(!detailsReady){
+   setAmenitiesLoading(false);
+   return;
+  }
+  const cacheKey=`${selectedId}:${selectedLat.toFixed(4)}:${selectedLon.toFixed(4)}`;
+  const cached=amenitiesCacheRef.current.get(cacheKey);
+  if(cached&&Date.now()-cached.cachedAt<300000){
+   setAmenities(cached.data);
+   setAmenityNotice(cached.notice);
+   setAmenityFetchedAt(cached.fetchedAt);
+   setAmenitiesLoading(false);
+   return;
+  }
+  setAmenitiesLoading(true);
+  try{
+   const r=await api<DirectorySnapshot<Amenity[]>>(`/api/explore?action=amenities&lat=${selectedLat}&lon=${selectedLon}`,{signal:controller.signal});
+   if(!controller.signal.aborted){
+    amenitiesCacheRef.current.set(cacheKey,{data:r.data,notice:r.notice||'',fetchedAt:r.fetchedAt,cachedAt:Date.now()});
+    setAmenities(r.data);
+    setAmenityNotice(r.notice||'');
+    setAmenityFetchedAt(r.fetchedAt);
+   }
+  }catch(e){
+   if(!controller.signal.aborted)setAmenityError((e as Error).message);
+  }finally{
+   if(!controller.signal.aborted)setAmenitiesLoading(false);
+  }
+ });
+ return()=>controller.abort();
+},[selectedId,selectedLat,selectedLon,amenityRetry,detailsReady]);
+useEffect(()=>{
+ const controller=new AbortController();
+ void Promise.resolve().then(async()=>{
+  if(!selectedId||selectedLat===undefined||selectedLon===undefined){
+   setSelectedRoad(null);
+   setSelectedRoadBusy(false);
+   return;
+  }
+  if(!detailsReady){
+   setSelectedRoadBusy(false);
+   return;
+  }
+  const roadCacheKey=`${origin.lat.toFixed(4)}:${origin.lon.toFixed(4)}:${selectedId}:${selectedLat.toFixed(4)}:${selectedLon.toFixed(4)}`;
+  const cached=selectedRoadCacheRef.current.get(roadCacheKey);
+  if(cached&&hasRenderableRoute(cached)){
+   setSelectedRoad(cached);
+   setSelectedRoadBusy(false);
+   return;
+  }
+  setSelectedRoad(null);
+  setSelectedRoadBusy(true);
+  try{
+   const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${origin.lat}&lon=${origin.lon}&toLat=${selectedLat}&toLon=${selectedLon}`,{signal:controller.signal});
+   if(!controller.signal.aborted){
+    const candidate={...r.data,fetchedAt:r.fetchedAt};
+    if(hasRenderableRoute(candidate)){
+     selectedRoadCacheRef.current.set(roadCacheKey,candidate);
+     setSelectedRoad(candidate);
+    }else setSelectedRoad(null);
+   }
+  }catch{
+   if(!controller.signal.aborted)setSelectedRoad(null);
+  }finally{
+   if(!controller.signal.aborted)setSelectedRoadBusy(false);
+  }
+ });
+ return()=>controller.abort();
+},[selectedId,selectedLat,selectedLon,origin.lat,origin.lon,detailsReady]);
 
 useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.current++;setRoad(null);setSmartPlan(null);setTripSnapshot(null);setRouteError('');setRouteBusy(false);setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);routeStationsSnapshot.current=null;}});return()=>{cancelled=true;};},[origin,destination,profile,battery]);
  useEffect(()=>{if(!smartPlan||!isSmartStopExpired(smartPlan,currentTime))return;let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSmartPlan(null);});return()=>{cancelled=true;};},[smartPlan,currentTime]);
@@ -476,7 +597,7 @@ async function plan(input:TripInput={origin,destination,profile,battery}){setSma
      {directoryNotice&&!loading&&<div className="directory-notice" role="status"><Clock3 aria-hidden="true"/><p>{directoryNotice}</p><Button variant="outline" onClick={()=>loadStations(center,searchedRadius)}>Refresh listings</Button></div>}
      {error&&<div className="error-box" role="alert"><AlertTriangle aria-hidden="true"/><p>{error}</p><Button variant="outline" onClick={()=>loadStations(center,searchedRadius)}>Retry charger search</Button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`EV charging stations near ${center.lat},${center.lon}`)}`} target="_blank" rel="noreferrer">Search this area on Google Maps ↗</a></div>}
      {!loading&&!error&&fetchedAt&&!visible.length&&<div className="empty-results">No mapped chargers match this search. Try a larger radius, another place or turn off filters. Missing map data does not mean there are no chargers.</div>}
-     <div className="charger-results">{visible.map(s=>{const info=stationAvailability.get(s.id);const expanded=expandedChargerId===s.id;const activeConnector=activeConnectorByCharger[s.id]||(s.connectors[0]||'Not listed');const connectorSpeed=s.connectorPower?.[activeConnector]??s.power;const drivingMiles=drivingDistanceByStation[s.id];const distanceLabel=typeof drivingMiles==='number'?`${drivingMiles.toFixed(1)} mi drive`:`${s.distance.toFixed(1)} mi est`;return <article className={`charger-row charger-card ${selected?.id===s.id?'is-selected':''} ${expanded?'is-expanded':''}`} key={s.id}><button type="button" className="charger-card-head" onClick={()=>{setSelected(s);setExpandedChargerId(s.id);window.open(stationLookup(s),'_blank','noopener,noreferrer');}}><span className="charger-symbol"><Zap size={20}/></span><span className="charger-info"><small>{s.network}</small><strong>{s.name}</strong><span>{distanceLabel} · {portsLabel(info)}</span><small>{liveStatusLabel(info)}</small></span><span className="charger-numbers"><strong>{connectorSpeed?`${connectorSpeed} kW`:'Speed not listed'}</strong><span>{activeConnector}</span><small className={`hours-badge hours-${stationHours.get(s.id)?.state||'unknown'}`}>{stationHours.get(s.id)?.label||'Checking hours…'}</small></span></button>{expanded&&<div className="charger-card-body"><div className="charger-card-stats"><span><strong>Distance</strong><small>{distanceLabel}</small></span><span><strong>Available ports</strong><small>{portsLabel(info).replace('Ports: ','')}</small></span><span><strong>Connector type</strong><small>{activeConnector}</small></span><span><strong>Charging speed</strong><small>{connectorSpeed?`${connectorSpeed} kW`:'Not listed'}</small></span><span><strong>Live status</strong><small>{info?.label||'Unconfirmed'}</small></span></div><div className="charger-port-row">{(s.connectors.length?s.connectors:['Not listed']).map(connector=><button key={connector} type="button" className={`connector-chip ${activeConnector===connector?'is-active':''}`} onClick={()=>setActiveConnectorByCharger(current=>({...current,[s.id]:connector}))}>{connector}</button>)}</div><div className="charger-card-actions"><Button asChild variant="outline"><a href={stationLookup(s)} target="_blank" rel="noreferrer"><Navigation/>Open in Google Maps</a></Button></div></div>}</article>;})}</div>
+     <div className="charger-results">{visible.map(s=>{const info=stationAvailability.get(s.id);const expanded=expandedChargerId===s.id;const activeConnector=activeConnectorByCharger[s.id]||(s.connectors[0]||'Not listed');const connectorSpeed=s.connectorPower?.[activeConnector]??s.power;const drivingMiles=drivingDistanceByStation[s.id];const distanceLabel=typeof drivingMiles==='number'?`${drivingMiles.toFixed(1)} mi drive`:`${s.distance.toFixed(1)} mi est`;return <article className={`charger-row charger-card ${selected?.id===s.id?'is-selected':''} ${expanded?'is-expanded':''}`} key={s.id}><button type="button" className="charger-card-head" onClick={()=>{setDetailsReady(true);setSelected(s);setExpandedChargerId(s.id);window.open(stationLookup(s),'_blank','noopener,noreferrer');}}><span className="charger-symbol"><Zap size={20}/></span><span className="charger-info"><small>{s.network}</small><strong>{s.name}</strong><span>{distanceLabel} · {portsLabel(info)}</span><small>{liveStatusLabel(info)}</small></span><span className="charger-numbers"><strong>{connectorSpeed?`${connectorSpeed} kW`:'Speed not listed'}</strong><span>{activeConnector}</span><small className={`hours-badge hours-${stationHours.get(s.id)?.state||'unknown'}`}>{stationHours.get(s.id)?.label||'Checking hours…'}</small></span></button>{expanded&&<div className="charger-card-body"><div className="charger-card-stats"><span><strong>Distance</strong><small>{distanceLabel}</small></span><span><strong>Available ports</strong><small>{portsLabel(info).replace('Ports: ','')}</small></span><span><strong>Connector type</strong><small>{activeConnector}</small></span><span><strong>Charging speed</strong><small>{connectorSpeed?`${connectorSpeed} kW`:'Not listed'}</small></span><span><strong>Live status</strong><small>{info?.label||'Unconfirmed'}</small></span></div><div className="charger-port-row">{(s.connectors.length?s.connectors:['Not listed']).map(connector=><button key={connector} type="button" className={`connector-chip ${activeConnector===connector?'is-active':''}`} onClick={()=>setActiveConnectorByCharger(current=>({...current,[s.id]:connector}))}>{connector}</button>)}</div><div className="charger-card-actions"><Button asChild variant="outline"><a href={stationLookup(s)} target="_blank" rel="noreferrer"><Navigation/>Open in Google Maps</a></Button></div></div>}</article>;})}</div>
     </section>
    </section>
   <aside id="charging-stop" tabIndex={-1} className="vr-details">{selected?<><p className="eyebrow">Charging stop</p><h2>{selected.name}</h2><p className="muted-small">{selected.address||`${selected.lat.toFixed(4)}, ${selected.lon.toFixed(4)}`}</p><StationEvidence station={selected} info={stationAvailability.get(selected.id)!} fetchedAt={fetchedAt}/><section className="live-refresh"><div><strong>Live operator check</strong><p>{liveLoading?'Checking TomTom availability…':liveError?liveError:stationAvailability.get(selected.id)?.freshness==='live'?stationAvailability.get(selected.id)?.label:'No live port count confirmed for this charger.'}</p></div><Button type="button" variant="outline" disabled={liveLoading} onClick={()=>void refreshLive(selected)}>{liveLoading?'Checking…':'Refresh live status'}</Button></section><div className={`compatibility-alert ${connectorMatch?'is-compatible':'is-incompatible'}`}>{connectorMatch?<CheckCircle2/>:<AlertTriangle/>}<div><strong>{connectorMatch?'Connector type matches':'Connector match unconfirmed'}</strong><span>Your {profile.name} uses {profile.connector}. Station lists {selected.connectors.join(', ')||'no connector details'}. Check model-year, adapter and network access requirements.</span></div></div><dl className="station-facts"><div><dt>Driving distance</dt><dd>{selectedRoadBusy?'Calculating…':selectedRoad?`${selectedRoad.miles.toFixed(1)} mi · ${Math.round(selectedRoad.minutes)} min`:'Unavailable'}</dd></div><div><dt>Power</dt><dd>{selected.power?`${selected.power} kW`:'Not published'}</dd></div><div><dt>Connectors</dt><dd>{selected.connectors.join(', ')||'Not published'}</dd></div><div><dt>Access</dt><dd>{selected.access==='Access not listed'?'Public access not confirmed':selected.access}</dd></div></dl><StationHours sourceUrl={selected.sourceUrl} hours={selected.hours} info={stationHours.get(selected.id)} checkedAt={hoursClock}/><StationPrice key={selected.id} station={selected} info={stationPrices.get(selected.id)!} range={profile.range} connector={profile.connector} enteredRate={enteredRates[selected.id]||''} onRateChange={value=>setEnteredRates(previous=>({...previous,[selected.id]:value}))}/>{signedIn?<section className="driver-report"><h3>Your station report</h3><p>{reports[selected.id]?`Your latest report: ${reports[selected.id].status} · ${evidenceTime(reports[selected.id].reportedAt)}`:'No report from you yet. Record the condition you observed at this station.'}</p><p className="muted-small">Saved privately to your account. Reports are recent for 24 hours and do not confirm a free port.</p><div><Button variant="outline" disabled={saving} onClick={()=>report('working')}>Working</Button><Button variant="outline" disabled={saving} onClick={()=>report('busy')}>Busy</Button><Button variant="outline" disabled={saving} onClick={()=>report('broken')}>Broken</Button></div></section>:<section className="account-prompt"><p>Sign in to save a private station report or share a community observation.</p><Button type="button" variant="outline" onClick={()=>void requestGoogleSignIn()}>Continue with Google</Button></section>}
