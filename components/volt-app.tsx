@@ -53,7 +53,7 @@ function hasRenderableRoute(route:RoadRoute|null|undefined):route is RoadRoute{
 async function api<T>(path:string,init?:RequestInit,accessToken?:string):Promise<T>{const headers=new Headers(init?.headers);if(accessToken)headers.set('Authorization',`Bearer ${accessToken}`);const response=await fetch(path,{...init,headers});const data=await response.json() as T & {error?:string};if(!response.ok)throw new Error(data.error || 'Something went wrong. Please try again.');return data;}
 function directions(p:{lat:number;lon:number},walking=false){return `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}&travelmode=${walking?'walking':'driving'}`;}
 function googleEvSearch(point:{lat:number;lon:number}){return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`EV charging stations near ${point.lat},${point.lon}`)}`;}
-function stationLookup(s:Station){return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${s.name} ${s.network} EV charger ${s.lat},${s.lon}`)}`;}
+function stationLookup(s:Station){return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent('My Location')}&destination=${s.lat},${s.lon}&travelmode=driving&dir_action=navigate`;}
 const tripConnectors: Profile['connector'][] = ['NACS','CCS1','J1772','CHAdeMO'];
 function parseBoundedNumber(raw:string|null,min:number,max:number){
   if(raw===null)return null;
