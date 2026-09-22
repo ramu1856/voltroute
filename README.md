@@ -121,7 +121,7 @@ Replace the filename with the pending migration and `DB` with your D1 binding na
 - `npm run qa:health`: run homepage/API uptime checks against production (override with `HEALTH_BASE_URL`)
 - `npm run qa:d1`: run a deep D1 write/read persistence verification (override with `D1_HEALTH_BASE_URL`)
 
-`/data-sources` now includes a live provider-health snapshot from `/api/provider-health` so you can quickly confirm OSRM and charger-directory endpoint reachability.
+`/data-sources` now includes a live provider-health snapshot from `/api/provider-status` (with a fallback to `/api/provider-health`) so you can quickly confirm OSRM and charger-directory endpoint reachability.
 
 ## Smart Stop QA smoke pass
 
@@ -142,8 +142,8 @@ The portable build runs Vinext directly without a host `timeout` command. The ma
 ## Production operations
 
 - Current production URL target: `https://site-creator-vinext-starter.voltroutes.workers.dev`
-- Health endpoint: `/api/health` (append `?deep=1` for D1 write/read probe)
-- Provider status endpoint: `/api/provider-health`
+- Health endpoint: `/api/system-health` (append `?deep=1` for D1 write/read probe)
+- Provider status endpoint: `/api/provider-status`
 
 ## Learn More
 

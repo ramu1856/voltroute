@@ -1,7 +1,7 @@
 const baseUrl = (process.env.D1_HEALTH_BASE_URL || 'https://site-creator-vinext-starter.voltroutes.workers.dev').replace(/\/$/, '');
 
 async function deepHealth() {
-  const response = await fetch(`${baseUrl}/api/health?deep=1`, { signal: AbortSignal.timeout(20000) });
+  const response = await fetch(`${baseUrl}/api/system-health?deep=1`, { signal: AbortSignal.timeout(20000) });
   const body = await response.json();
   if (!response.ok) throw new Error(body?.error || `Health endpoint returned ${response.status}`);
   return body;

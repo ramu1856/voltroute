@@ -10,7 +10,7 @@ export default function DataSources(){
  <h2>Live charging availability</h2><p>When a compatible TomTom charging-availability record can be matched to a station, VoltRoutes may display recent operator availability such as free, occupied, reserved, or out-of-service port counts. If no reliable match or current observation exists, the status remains unconfirmed.</p>
  <h2>User observations</h2><p>Signed-in users may save private reports or choose to share community observations. These describe what a driver observed at a point in time and are not equivalent to operator telemetry.</p>
  <h2>Price labels</h2><p>Prices are labeled Verified, Estimated, or Unavailable based on source quality and freshness. VoltRoutes does not invent a default price when a usable rate is missing.</p>
- <p><strong>Operations checks:</strong> <a href={`${WORKER_SITE_ORIGIN}/api/health`} target="_blank" rel="noreferrer">/api/health</a> for runtime + D1 status, and <a href={`${WORKER_SITE_ORIGIN}/api/provider-health`} target="_blank" rel="noreferrer">/api/provider-health</a> for provider reachability.</p>
+ <p><strong>Operations checks:</strong> <a href={`${WORKER_SITE_ORIGIN}/api/system-health`} target="_blank" rel="noreferrer">/api/system-health</a> for runtime + D1 status, and <a href={`${WORKER_SITE_ORIGIN}/api/provider-status`} target="_blank" rel="noreferrer">/api/provider-status</a> for provider reachability.</p>
  <ProviderHealthPanel/>
  </div></main>;
 }

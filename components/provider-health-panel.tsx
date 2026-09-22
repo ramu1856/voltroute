@@ -24,7 +24,10 @@ export function ProviderHealthPanel() {
       setBusy(true);
       setError('');
       try {
-        const response = await fetch('/api/provider-health', { signal: controller.signal, cache: 'no-store' });
+        let response = await fetch('/api/provider-status', { signal: controller.signal, cache: 'no-store' });
+        if (response.status === 404) {
+          response = await fetch('/api/provider-health', { signal: controller.signal, cache: 'no-store' });
+        }
         const body = (await response.json()) as ProviderHealthSnapshot & { error?: string };
         if (!response.ok) throw new Error(body.error || 'Provider health is unavailable right now.');
         if (!cancelled) setSnapshot(body);

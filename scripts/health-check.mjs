@@ -8,17 +8,17 @@ const checks = [
   },
   {
     name: 'health-basic',
-    path: '/api/health',
+    path: '/api/system-health',
     expect: (status, body) => status === 200 && body.status && ['ok', 'degraded'].includes(body.status),
   },
   {
     name: 'health-d1-deep',
-    path: '/api/health?deep=1',
+    path: '/api/system-health?deep=1',
     expect: (status, body) => status === 200 && body.d1?.bound === true && body.d1?.readable === true && body.d1?.writable === true,
   },
   {
     name: 'provider-health',
-    path: '/api/provider-health',
+    path: '/api/provider-status',
     expect: (status, body) => status === 200 && Array.isArray(body.checks) && body.checks.length >= 2,
   },
   {
