@@ -40,7 +40,6 @@ const WORKER_PRIVACY_URL=`${WORKER_SITE_ORIGIN}/privacy`;
 const WORKER_TERMS_URL=`${WORKER_SITE_ORIGIN}/terms`;
 type DriverReport={sourceId:string;stationName:string;status:'working'|'busy'|'broken';note:string;reportedAt?:number};
 type Saved = {id:string;kind:'profile'|'station'|'trip'|'report';payload:Profile | (Point&{sourceId:string}) | TripInput | DriverReport;updated:number};
-type NavigationLocationState={lat:number;lon:number;accuracyMeters:number|null;heading:number|null;speedMph:number|null;recordedAt:number};
 function hasRenderableRoute(route:RoadRoute|null|undefined):route is RoadRoute{
  if(!route||!Array.isArray(route.coordinates)||route.coordinates.length<2)return false;
  if(!route.coordinates.every(point=>Array.isArray(point)&&point.length===2&&Number.isFinite(point[0])&&Number.isFinite(point[1])))return false;
@@ -56,40 +55,6 @@ function directions(p:{lat:number;lon:number},walking=false){return `https://www
 function googleEvSearch(point:{lat:number;lon:number}){return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`EV charging stations near ${point.lat},${point.lon}`)}`;}
 function stationLookup(s:Station){return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${s.name} ${s.network} EV charger ${s.lat},${s.lon}`)}`;}
 const tripConnectors: Profile['connector'][] = ['NACS','CCS1','J1772','CHAdeMO'];
-const MILES_PER_DEG_LAT=69.172;
-function clamp(value:number,min:number,max:number){return Math.min(max,Math.max(min,value));}
-function normalizeTurnDelta(delta:number){
- let normalized=delta;
- while(normalized>180)normalized-=360;
- while(normalized<-180)normalized+=360;
- return normalized;
-}
-function bearingDegrees(from:{lat:number;lon:number},to:{lat:number;lon:number}){
- const φ1=from.lat*Math.PI/180,φ2=to.lat*Math.PI/180;
- const Δλ=(to.lon-from.lon)*Math.PI/180;
- const y=Math.sin(Δλ)*Math.cos(φ2);
- const x=Math.cos(φ1)*Math.sin(φ2)-Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
- const θ=Math.atan2(y,x)*180/Math.PI;
- return (θ+360)%360;
-}
-function cardinalFromBearing(bearing:number){
- const labels=['N','NE','E','SE','S','SW','W','NW'];
- return labels[Math.round(bearing/45)%8];
-}
-function formatTravelDistance(milesValue:number){
- if(milesValue<=0)return '0 ft';
- if(milesValue<0.1)return `${Math.max(30,Math.round(milesValue*5280/10)*10)} ft`;
- return `${milesValue.toFixed(milesValue>=10?0:1)} mi`;
-}
-function turnInstructionFromDelta(delta:number){
- const abs=Math.abs(delta);
- if(abs>=150)return 'Make a U-turn';
- if(delta>=70)return 'Turn right';
- if(delta<=-70)return 'Turn left';
- if(delta>=25)return 'Keep right';
- if(delta<=-25)return 'Keep left';
- return 'Continue straight';
-}
 function parseBoundedNumber(raw:string|null,min:number,max:number){
   if(raw===null)return null;
   const value=Number(raw);
@@ -164,9 +129,8 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const [directoryNotice,setDirectoryNotice]=useState(''),[amenityNotice,setAmenityNotice]=useState(''),[amenityFetchedAt,setAmenityFetchedAt]=useState(''),[searchedRadius,setSearchedRadius]=useState('160934');
  const [routeStationsBusy,setRouteStationsBusy]=useState(false),[routeStationsError,setRouteStationsError]=useState(''),[routeStationsMode,setRouteStationsMode]=useState(false);
  const [filter,setFilter]=useState(''),[fast,setFast]=useState(false),[match,setMatch]=useState(false),[freeOnly,setFreeOnly]=useState(false),[radius,setRadius]=useState('160934');
- const [road,setRoad]=useState<RoadRoute|null>(null),[selectedRoad,setSelectedRoad]=useState<RoadRoute|null>(null),[selectedRoadBusy,setSelectedRoadBusy]=useState(false),[switchingRoute,setSwitchingRoute]=useState(false),[routeBusy,setRouteBusy]=useState(false),[routeError,setRouteError]=useState(''),[tripSnapshot,setTripSnapshot]=useState<TripInput|null>(null),[mapRouteOverride,setMapRouteOverride]=useState<RoadRoute|null>(null),[navigationRoute,setNavigationRoute]=useState<RoadRoute|null>(null),[pinnedMapRoute,setPinnedMapRoute]=useState<RoadRoute|null>(null),[mapRouteFocusToken,setMapRouteFocusToken]=useState(0),[navigationRecenterToken,setNavigationRecenterToken]=useState(0);
- const [expandedChargerId,setExpandedChargerId]=useState<string|null>(null),[activeConnectorByCharger,setActiveConnectorByCharger]=useState<Record<string,string>>({}),[routeOnlyMode,setRouteOnlyMode]=useState(false),[startingNavigation,setStartingNavigation]=useState(false),[navigationTargetId,setNavigationTargetId]=useState<string|null>(null),[navigationRouteKey,setNavigationRouteKey]=useState<string|null>(null),[navigationDistanceMiles,setNavigationDistanceMiles]=useState<number|null>(null),[navigationEtaMinutes,setNavigationEtaMinutes]=useState<number|null>(null);
- const [navigationLocation,setNavigationLocation]=useState<NavigationLocationState|null>(null),[navigationLocationError,setNavigationLocationError]=useState('');
+ const [road,setRoad]=useState<RoadRoute|null>(null),[selectedRoad,setSelectedRoad]=useState<RoadRoute|null>(null),[selectedRoadBusy,setSelectedRoadBusy]=useState(false),[routeBusy,setRouteBusy]=useState(false),[routeError,setRouteError]=useState(''),[tripSnapshot,setTripSnapshot]=useState<TripInput|null>(null);
+ const [expandedChargerId,setExpandedChargerId]=useState<string|null>(null),[activeConnectorByCharger,setActiveConnectorByCharger]=useState<Record<string,string>>({});
  const [smartPlan,setSmartPlan]=useState<SmartStopResult|null>(null);
  const [showRisk,setShowRisk]=useState(true),[focusedRisk,setFocusedRisk]=useState<string|null>(null);
  const [saving,setSaving]=useState(false),[amenityRetry,setAmenityRetry]=useState(0),[locating,setLocating]=useState(false);
@@ -202,9 +166,6 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const tripAssessment=useMemo(()=>smartPlan?assessTrip(smartPlan,currentTime):null,[smartPlan,currentTime]);
  useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled)setFocusedRisk(null);});return()=>{cancelled=true;};},[smartPlan]);
  const requestId=useRef(0),routeId=useRef(0),liveId=useRef(0);
- const navigationWatchIdRef=useRef<number|null>(null);
- const lastNavigationSampleRef=useRef<{lat:number;lon:number;capturedAt:number}|null>(null);
- const selectedRoadStationIdRef=useRef<string|null>(null),selectedRoadSignatureRef=useRef<string|null>(null),routeActionRequestIdRef=useRef(0);
  const stationRequest=useRef<AbortController|null>(null),loadStationsRef=useRef(loadStations),loadAccountRef=useRef(loadAccount),selectedRef=useRef<Station|null>(null),refreshLiveRef=useRef<(station:Station)=>Promise<void>>(async()=>{});
  const stationSnapshotCache=useRef<Map<string,DirectorySnapshot<Station[]>>>(new Map());
  useEffect(()=>()=>stationRequest.current?.abort(),[]);
@@ -218,7 +179,6 @@ export default function VoltApp({supabaseUrl,supabaseKey}:{supabaseUrl:string;su
  const visible=useMemo(()=>stations.filter(s=>(!(openNow||allDay)||(hoursClock!==null&&matchesHoursFilter(stationHours.get(s.id)!,openNow,allDay)))&&(!fast||(s.power!==null&&s.power>=100))&&(!freeOnly||s.fee==='Listed as free')&&(!(match||emergency)||s.connectors.includes(profile.connector))&&`${s.name} ${s.network} ${s.address}`.toLowerCase().includes(filter.toLowerCase())).slice(0,emergency?12:250),[stations,fast,freeOnly,match,emergency,profile.connector,filter,openNow,allDay,stationHours,hoursClock]);
  const checkpoints=road&&tripSnapshot?chargingCheckpoints(road,tripSnapshot.profile,tripSnapshot.battery):[];
 const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const mid=road.coordinates[Math.floor(road.coordinates.length/2)];if(!mid)return null;const [lon,lat]=mid;return {lat,lon};},[road]);
- const TRIP_DESTINATION_NAV_ID='__trip-destination__';
  function portsLabel(info:ReturnType<typeof stationAvailability.get>){
   if(!info)return 'Ports: unconfirmed';
   if(info.availablePorts!==null&&info.totalPorts!==null)return `Ports: ${info.availablePorts}/${info.totalPorts} free`;
@@ -235,7 +195,6 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
   stationRequest.current?.abort();const controller=new AbortController();stationRequest.current=controller;
   routeStationsSnapshot.current=null;
   setRouteStationsMode(false);
-  setRouteOnlyMode(false);
   setRouteStationsError('');
   setRouteStationsBusy(false);
   setSmartPlan(null);const id=++requestId.current;setLoading(!cached);setError('');setCenter(point);setSearchedRadius(chosenRadius);
@@ -266,57 +225,9 @@ const routeMidpoint=useMemo(()=>{if(!road?.coordinates.length)return null;const 
  useEffect(()=>{const station=selectedRef.current;if(!station)return;const timer=window.setTimeout(()=>{void refreshLiveRef.current(station);},250);return()=>window.clearTimeout(timer);},[selectedId,profile.connector]);
  useEffect(()=>{const controller=new AbortController();void Promise.resolve().then(async()=>{if(controller.signal.aborted)return;setAmenities([]);setAmenityError('');setAmenityNotice('');setAmenityFetchedAt('');if(!selectedId){setAmenitiesLoading(false);return;}setAmenitiesLoading(true);try{const r=await api<DirectorySnapshot<Amenity[]>>(`/api/explore?action=amenities&lat=${selectedLat}&lon=${selectedLon}`,{signal:controller.signal});if(!controller.signal.aborted){setAmenities(r.data);setAmenityNotice(r.notice||'');setAmenityFetchedAt(r.fetchedAt);}}catch(e){if(!controller.signal.aborted)setAmenityError((e as Error).message);}finally{if(!controller.signal.aborted)setAmenitiesLoading(false);}});return()=>controller.abort();
  },[selectedId,selectedLat,selectedLon,amenityRetry]);
-useEffect(()=>{const controller=new AbortController();void Promise.resolve().then(async()=>{if(!selectedId||selectedLat===undefined||selectedLon===undefined){selectedRoadStationIdRef.current=null;selectedRoadSignatureRef.current=null;setSelectedRoad(null);setSelectedRoadBusy(false);return;}setSelectedRoad(null);setSelectedRoadBusy(true);try{const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${origin.lat}&lon=${origin.lon}&toLat=${selectedLat}&toLon=${selectedLon}`,{signal:controller.signal});if(!controller.signal.aborted){const candidate={...r.data,fetchedAt:r.fetchedAt};if(hasRenderableRoute(candidate)){selectedRoadStationIdRef.current=selectedId;selectedRoadSignatureRef.current=`${selectedId}:${origin.lat.toFixed(5)}:${origin.lon.toFixed(5)}`;setSelectedRoad(candidate);}else{selectedRoadStationIdRef.current=null;selectedRoadSignatureRef.current=null;setSelectedRoad(null);}}}catch{if(!controller.signal.aborted){selectedRoadStationIdRef.current=null;selectedRoadSignatureRef.current=null;setSelectedRoad(null);}}finally{if(!controller.signal.aborted)setSelectedRoadBusy(false);}});return()=>controller.abort();},[selectedId,selectedLat,selectedLon,origin.lat,origin.lon]);
+useEffect(()=>{const controller=new AbortController();void Promise.resolve().then(async()=>{if(!selectedId||selectedLat===undefined||selectedLon===undefined){setSelectedRoad(null);setSelectedRoadBusy(false);return;}setSelectedRoad(null);setSelectedRoadBusy(true);try{const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${origin.lat}&lon=${origin.lon}&toLat=${selectedLat}&toLon=${selectedLon}`,{signal:controller.signal});if(!controller.signal.aborted){const candidate={...r.data,fetchedAt:r.fetchedAt};setSelectedRoad(hasRenderableRoute(candidate)?candidate:null);}}catch{if(!controller.signal.aborted)setSelectedRoad(null);}finally{if(!controller.signal.aborted)setSelectedRoadBusy(false);}});return()=>controller.abort();},[selectedId,selectedLat,selectedLon,origin.lat,origin.lon]);
 
- useEffect(()=>{
-  let disposed=false;
-  const clearWatch=()=>{
-   const watchId=navigationWatchIdRef.current;
-   if(watchId===null)return;
-   if(typeof navigator!=='undefined'&&navigator.geolocation)navigator.geolocation.clearWatch(watchId);
-   navigationWatchIdRef.current=null;
-  };
-  if(!navigationTargetId){
-   clearWatch();
-   return;
-  }
-  if(typeof navigator==='undefined'||!navigator.geolocation){
-   queueMicrotask(()=>{if(!disposed)setNavigationLocationError('Location services are unavailable in this browser.');});
-   return()=>{disposed=true;};
-  }
-  queueMicrotask(()=>{if(!disposed)setNavigationLocationError('');});
-  clearWatch();
-  navigationWatchIdRef.current=navigator.geolocation.watchPosition(position=>{
-   if(disposed)return;
-   const nextLat=Number(position.coords.latitude.toFixed(6));
-   const nextLon=Number(position.coords.longitude.toFixed(6));
-   const now=Date.now();
-   const lastSample=lastNavigationSampleRef.current;
-   if(lastSample){
-    const movedMiles=miles({lat:lastSample.lat,lon:lastSample.lon},{lat:nextLat,lon:nextLon});
-    if(now-lastSample.capturedAt<900&&movedMiles<0.008)return;
-   }
-   lastNavigationSampleRef.current={lat:nextLat,lon:nextLon,capturedAt:now};
-   const heading=Number.isFinite(position.coords.heading)?position.coords.heading:null;
-   const speedMph=Number.isFinite(position.coords.speed)?Number(position.coords.speed)*2.23694:null;
-   setNavigationLocation({
-    lat:nextLat,
-    lon:nextLon,
-    accuracyMeters:Number.isFinite(position.coords.accuracy)?position.coords.accuracy:null,
-    heading:heading===null?null:Number(heading.toFixed(1)),
-    speedMph:speedMph===null?null:Number(speedMph.toFixed(1)),
-    recordedAt:now,
-   });
-   setNavigationLocationError('');
-  },error=>{
-   if(disposed)return;
-   const message=error.message||'Allow location access to keep live navigation centered.';
-   setNavigationLocationError(message);
-  },{enableHighAccuracy:true,maximumAge:3000,timeout:20000});
-  return()=>{disposed=true;clearWatch();lastNavigationSampleRef.current=null;};
- },[navigationTargetId]);
-
-useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.current++;routeActionRequestIdRef.current++;setRoad(null);setSmartPlan(null);setTripSnapshot(null);setRouteOnlyMode(false);setNavigationTargetId(null);setNavigationRouteKey(null);setNavigationDistanceMiles(null);setNavigationEtaMinutes(null);setNavigationLocation(null);setNavigationLocationError('');setSwitchingRoute(false);setStartingNavigation(false);selectedRoadStationIdRef.current=null;selectedRoadSignatureRef.current=null;setRouteError('');setRouteBusy(false);setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);routeStationsSnapshot.current=null;}});return()=>{cancelled=true;};},[origin,destination,profile,battery]);
+useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.current++;setRoad(null);setSmartPlan(null);setTripSnapshot(null);setRouteError('');setRouteBusy(false);setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);routeStationsSnapshot.current=null;}});return()=>{cancelled=true;};},[origin,destination,profile,battery]);
  useEffect(()=>{if(!smartPlan||!isSmartStopExpired(smartPlan,currentTime))return;let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSmartPlan(null);});return()=>{cancelled=true;};},[smartPlan,currentTime]);
  useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSmartPlan(null);});return()=>{cancelled=true;};},[reports,enteredRates]);
  useEffect(()=>{if(!((selected&&!visible.some(s=>s.id===selected.id))||(!selected&&visible.length)))return;let cancelled=false;queueMicrotask(()=>{if(!cancelled)setSelected(visible[0]||null);});return()=>{cancelled=true;};},[visible,selected]);
@@ -345,166 +256,6 @@ useEffect(()=>{let cancelled=false;queueMicrotask(()=>{if(!cancelled){routeId.cu
   }catch{
    toast.error('Could not copy link automatically. Please retry and allow clipboard access.');
   }
- }
- function showRouteDirectionsOnMap(routeToShow:RoadRoute,message?:string){
-  if(!hasRenderableRoute(routeToShow)){toast.error('A complete route could not be confirmed. Please retry.');return;}
-  setMapRouteOverride(routeToShow);
-  setPinnedMapRoute(routeToShow);
-  setMapRouteFocusToken(token=>token+1);
-  setNavigationRecenterToken(token=>token+1);
-  setFocusedRisk(null);
-  document.querySelector('#charger-map')?.scrollIntoView({behavior:'smooth',block:'start'});
-  if(message)toast.success(message);
- }
- function recenterNavigationMap(){
-  setNavigationRecenterToken(token=>token+1);
- }
-async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean;preferLiveStart?:boolean}){
-  const startCandidates:Point[]=[];
-  if(options?.preferLiveStart&&navigationLocation)startCandidates.push({lat:navigationLocation.lat,lon:navigationLocation.lon,label:'Current location'});
-  startCandidates.push(origin);
-  const primarySignature=`${station.id}:${startCandidates[0].lat.toFixed(5)}:${startCandidates[0].lon.toFixed(5)}`;
-  if(!options?.forceFresh&&hasRenderableRoute(selectedRoad)&&selectedRoadStationIdRef.current===station.id&&selectedRoadSignatureRef.current===primarySignature)return selectedRoad;
-  let lastError:Error|null=null;
-  const uniqueStarts=startCandidates.filter((point,index,list)=>list.findIndex(candidate=>Math.abs(candidate.lat-point.lat)<1e-6&&Math.abs(candidate.lon-point.lon)<1e-6)===index);
-  for(const start of uniqueStarts){
-   const signature=`${station.id}:${start.lat.toFixed(5)}:${start.lon.toFixed(5)}`;
-   for(let attempt=0;attempt<2;attempt++){
-    try{
-     const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${start.lat}&lon=${start.lon}&toLat=${station.lat}&toLon=${station.lon}`);
-     const routeToStation={...r.data,fetchedAt:r.fetchedAt};
-     if(!hasRenderableRoute(routeToStation))throw new Error('Route geometry is incomplete for this destination.');
-     selectedRoadStationIdRef.current=station.id;
-     selectedRoadSignatureRef.current=signature;
-     setSelectedRoad(routeToStation);
-     return routeToStation;
-    }catch(error){
-     lastError=error instanceof Error?error:new Error('Route could not be loaded right now.');
-    }
-   }
-  }
-  throw lastError||new Error('Route could not be loaded right now.');
- }
- async function showDirectionsToStation(station:Station){
-  const routeActionId=++routeActionRequestIdRef.current;
-  const wasNavigating=!!navigationTargetId;
-  setSelected(station);
-  setExpandedChargerId(station.id);
-  selectedRoadStationIdRef.current=null;
-  selectedRoadSignatureRef.current=null;
-  setSelectedRoad(null);
-  setMapRouteOverride(null);
-  setPinnedMapRoute(null);
-  setNavigationRoute(null);
-  setNavigationDistanceMiles(null);
-  setNavigationEtaMinutes(null);
-  if(wasNavigating){
-   setNavigationTargetId(station.id);
-   setNavigationRouteKey(`station:${station.id}:${routeActionId}`);
-  }
-  setSwitchingRoute(true);
-  setSelectedRoadBusy(true);
-  try{
-   const routeToStation=await loadRoadToStation(station,{forceFresh:true,preferLiveStart:wasNavigating});
-   if(routeActionId!==routeActionRequestIdRef.current)return;
-   showRouteDirectionsOnMap(routeToStation,'Directions are now shown on the map.');
-   if(wasNavigating){
-    setNavigationRoute(routeToStation);
-    setNavigationTargetId(station.id);
-    setNavigationDistanceMiles(routeToStation.miles);
-    setNavigationEtaMinutes(Math.round(routeToStation.minutes));
-   }
-  }catch(e){
-   if(routeActionId===routeActionRequestIdRef.current)toast.error((e as Error).message||'Directions could not be loaded right now.');
-  }finally{
-   if(routeActionId===routeActionRequestIdRef.current){setSelectedRoadBusy(false);setSwitchingRoute(false);}
-  }
- }
- async function showDirectionsToSelected(){
-  if(!selected)return;
-  await showDirectionsToStation(selected);
- }
- async function startTripNavigation(){
-  const routeActionId=++routeActionRequestIdRef.current;
-  if(!tripSnapshot){toast.info('Calculate the route first to start navigation mode.');return;}
-  setStartingNavigation(true);
-  try{
-   let routeForNavigation=hasRenderableRoute(road)?road:null;
-   if(!routeForNavigation){
-    const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${tripSnapshot.origin.lat}&lon=${tripSnapshot.origin.lon}&toLat=${tripSnapshot.destination.lat}&toLon=${tripSnapshot.destination.lon}`);
-    routeForNavigation={...r.data,fetchedAt:r.fetchedAt};
-    if(!hasRenderableRoute(routeForNavigation))throw new Error('Navigation route could not be loaded. Please retry.');
-    if(routeActionId!==routeActionRequestIdRef.current)return;
-    setRoad(routeForNavigation);
-   }
-   if(routeActionId!==routeActionRequestIdRef.current)return;
-   setNavigationRouteKey(`trip:${routeActionId}`);
-   showRouteDirectionsOnMap(routeForNavigation);
-   setNavigationRoute(routeForNavigation);
-   setPinnedMapRoute(routeForNavigation);
-   setNavigationTargetId(TRIP_DESTINATION_NAV_ID);
-   setNavigationDistanceMiles(routeForNavigation.miles);
-   setNavigationEtaMinutes(Math.round(routeForNavigation.minutes));
-   toast.success('VoltRoute navigation mode started for your destination route.');
-  }catch(error){
-   if(routeActionId===routeActionRequestIdRef.current)toast.error(error instanceof Error?error.message:'Navigation route could not be loaded right now.');
-  }finally{
-   if(routeActionId===routeActionRequestIdRef.current)setStartingNavigation(false);
-  }
- }
- async function startNavigationToStation(station:Station){
-  const routeActionId=++routeActionRequestIdRef.current;
-  setSelected(station);
-  setExpandedChargerId(station.id);
-  setNavigationTargetId(station.id);
-  setNavigationRouteKey(`station:${station.id}:${routeActionId}`);
-  selectedRoadStationIdRef.current=null;
-  selectedRoadSignatureRef.current=null;
-  setSelectedRoad(null);
-  setMapRouteOverride(null);
-  setPinnedMapRoute(null);
-  setNavigationRoute(null);
-  setNavigationDistanceMiles(null);
-  setNavigationEtaMinutes(null);
-  setSwitchingRoute(true);
-  setStartingNavigation(true);
-  try{
-   const routeToStation=await loadRoadToStation(station,{forceFresh:true,preferLiveStart:true});
-   if(routeActionId!==routeActionRequestIdRef.current)return;
-   showRouteDirectionsOnMap(routeToStation);
-   setNavigationRoute(routeToStation);
-   setPinnedMapRoute(routeToStation);
-   setNavigationTargetId(station.id);
-   setNavigationDistanceMiles(routeToStation.miles);
-   setNavigationEtaMinutes(Math.round(routeToStation.minutes));
-   toast.success('VoltRoute navigation mode started. Follow the highlighted map route.');
-  }catch(e){
-   if(routeActionId===routeActionRequestIdRef.current){
-    toast.error((e as Error).message||'Navigation could not be started right now.');
-    setNavigationTargetId(null);
-   }
-  }finally{
-   if(routeActionId===routeActionRequestIdRef.current){
-    setSwitchingRoute(false);
-    setStartingNavigation(false);
-   }
-  }
- }
- function stopNavigationMode(){
-  routeActionRequestIdRef.current++;
-  setRouteOnlyMode(false);
-  setMapRouteOverride(null);
-  setNavigationRoute(null);
-  setPinnedMapRoute(null);
-  setNavigationTargetId(null);
-  setNavigationRouteKey(null);
-  setNavigationDistanceMiles(null);
-  setNavigationEtaMinutes(null);
-  setNavigationLocation(null);
-  setNavigationLocationError('');
-  setSwitchingRoute(false);
-  setStartingNavigation(false);
-  toast.info('Navigation mode stopped.');
  }
  function swapTripEndpoints(){
   const nextOrigin=destination;
@@ -582,7 +333,7 @@ async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean;p
   setRouteStationsMode(false);
   setRouteStationsError('');
   setRouteStationsBusy(false);
-  requestId.current++;routeId.current++;setLoading(false);setRouteBusy(false);setRouteError('');setError('');setRoad(null);setTripSnapshot(null);setMapRouteOverride(null);setNavigationRoute(null);setPinnedMapRoute(null);setRouteOnlyMode(false);setSmartPlan(result);
+ requestId.current++;routeId.current++;setLoading(false);setRouteBusy(false);setRouteError('');setError('');setRoad(null);setTripSnapshot(null);setSmartPlan(result);
   if(result.selected||result.candidates.length){
    setDirectoryNotice('');
    setFilter('');setFast(false);setFreeOnly(false);setMatch(false);setOpenNow(false);setAllDay(false);setEmergency(false);
@@ -592,7 +343,7 @@ async function loadRoadToStation(station:Station,options?:{forceFresh?:boolean;p
    setSelected(view==='backup'&&backup?backup.station:result.selected?.station||listed[0]||null);setFetchedAt(result.directoryFetchedAt||'');setCenter({...result.input.origin,label:result.selected?'Smart Stop candidates':'Candidates to review, not recommendations'});
   }
  }
-async function plan(input:TripInput={origin,destination,profile,battery}){setSmartPlan(null);routeStationsSnapshot.current=null;setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);const id=++routeId.current;setRouteBusy(true);setRouteError('');setRoad(null);setMapRouteOverride(null);setNavigationRoute(null);setPinnedMapRoute(null);setRouteOnlyMode(false);try{const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${input.origin.lat}&lon=${input.origin.lon}&toLat=${input.destination.lat}&toLon=${input.destination.lon}`);if(id!==routeId.current)return;setRoad({...r.data,fetchedAt:r.fetchedAt});setTripSnapshot(input);}catch(e){if(id===routeId.current)setRouteError((e as Error).message);}finally{if(id===routeId.current)setRouteBusy(false);}}
+async function plan(input:TripInput={origin,destination,profile,battery}){setSmartPlan(null);routeStationsSnapshot.current=null;setRouteStationsMode(false);setRouteStationsError('');setRouteStationsBusy(false);const id=++routeId.current;setRouteBusy(true);setRouteError('');setRoad(null);try{const r=await api<{data:Omit<RoadRoute,'fetchedAt'>;fetchedAt:string}>(`/api/explore?action=route&lat=${input.origin.lat}&lon=${input.origin.lon}&toLat=${input.destination.lat}&toLon=${input.destination.lon}`);if(id!==routeId.current)return;setRoad({...r.data,fetchedAt:r.fetchedAt});setTripSnapshot(input);}catch(e){if(id===routeId.current)setRouteError((e as Error).message);}finally{if(id===routeId.current)setRouteBusy(false);}}
  async function save(kind:Saved['kind'],payload:Saved['payload']){if(!accessToken){void requestGoogleSignIn();return;}setSaving(true);try{await api('/api/account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,payload})},accessToken);await loadAccount();toast.success('Saved to your account.');}catch(e){toast.error((e as Error).message);}finally{setSaving(false);}}
  async function remove(id:string){if(!accessToken){void requestGoogleSignIn();return;}setSaving(true);try{await api(`/api/account?id=${encodeURIComponent(id)}`,{method:'DELETE'},accessToken);setSaved(items=>items.filter(i=>i.id!==id));toast.success('Removed from saved items.');}catch(e){toast.error((e as Error).message);}finally{setSaving(false);}}
  async function report(status:DriverReport['status']){if(!selected)return;if(!accessToken){void requestGoogleSignIn();return;}const payload={sourceId:selected.id,stationName:selected.name,status,note:''};setSaving(true);try{const result=await api<{updated:number}>('/api/account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'report',payload})},accessToken);setReports(r=>({...r,[payload.sourceId]:{...payload,reportedAt:result.updated}}));setHoursClock(Date.now());toast.success('Your timestamped station report was saved.');}catch(e){toast.error((e as Error).message);}finally{setSaving(false);}}
@@ -618,67 +369,6 @@ async function plan(input:TripInput={origin,destination,profile,battery}){setSma
   register({name:'set_vehicle_profile',title:'Set EV profile',description:'Set the vehicle name, connector and full-battery range used for matching and trip estimates.',inputSchema:{type:'object',properties:{name:{type:'string',minLength:1,maxLength:80},connector:{type:'string',enum:['NACS','CCS1','J1772','CHAdeMO']},range:{type:'number',minimum:30,maximum:600}},required:['name','connector','range'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute(input:unknown){const p=input as Profile;if(!p.name||!['NACS','CCS1','J1772','CHAdeMO'].includes(p.connector)||p.range<30||p.range>600)throw new Error('Valid vehicle details are required');setProfile(p);return{updated:true,profile:p};}});
   return()=>lifecycle.abort();
  },[]);
-const navigationModeActive=!!navigationTargetId;
-const activeMapRoute=navigationModeActive?(navigationRoute||null):(mapRouteOverride||pinnedMapRoute||smartPlan?.route||road||null);
- const navigationSummary=useMemo(()=>{
-  if(!navigationModeActive||!activeMapRoute||!navigationLocation||activeMapRoute.coordinates.length<2)return null;
-  const coordinates=activeMapRoute.coordinates;
-  const cumulativeMiles=[0];
-  for(let i=1;i<coordinates.length;i++){
-   const prev={lat:coordinates[i-1][1],lon:coordinates[i-1][0]};
-   const current={lat:coordinates[i][1],lon:coordinates[i][0]};
-   cumulativeMiles.push(cumulativeMiles[i-1]+miles(prev,current));
-  }
-  const totalMiles=cumulativeMiles[cumulativeMiles.length-1]||0;
-  const scaleLon=Math.cos(navigationLocation.lat*Math.PI/180)*MILES_PER_DEG_LAT;
-  const pointX=navigationLocation.lon*scaleLon;
-  const pointY=navigationLocation.lat*MILES_PER_DEG_LAT;
-  let nearestSegment=0,nearestT=0,nearestDistanceMiles=Number.POSITIVE_INFINITY;
-  for(let i=0;i<coordinates.length-1;i++){
-   const startX=coordinates[i][0]*scaleLon,startY=coordinates[i][1]*MILES_PER_DEG_LAT;
-   const endX=coordinates[i+1][0]*scaleLon,endY=coordinates[i+1][1]*MILES_PER_DEG_LAT;
-   const deltaX=endX-startX,deltaY=endY-startY;
-   const segmentLengthSquared=deltaX*deltaX+deltaY*deltaY;
-   if(segmentLengthSquared===0)continue;
-   const t=clamp(((pointX-startX)*deltaX+(pointY-startY)*deltaY)/segmentLengthSquared,0,1);
-   const projectedX=startX+deltaX*t,projectedY=startY+deltaY*t;
-   const distanceMiles=Math.hypot(pointX-projectedX,pointY-projectedY);
-   if(distanceMiles<nearestDistanceMiles){nearestDistanceMiles=distanceMiles;nearestSegment=i;nearestT=t;}
-  }
-  const segmentMiles=Math.max(0,cumulativeMiles[nearestSegment+1]-cumulativeMiles[nearestSegment]);
-  const traveledMiles=Math.max(0,cumulativeMiles[nearestSegment]+segmentMiles*nearestT);
-  const remainingMiles=Math.max(0,totalMiles-traveledMiles);
-  const paceMinutesPerMile=activeMapRoute.minutes/Math.max(activeMapRoute.miles,0.01);
-  const remainingMinutes=Math.max(0,remainingMiles*paceMinutesPerMile);
-  let turnInstruction='Continue straight',turnDistanceMiles=remainingMiles;
-  let headingLabel=cardinalFromBearing(bearingDegrees({lat:coordinates[Math.max(0,nearestSegment)][1],lon:coordinates[Math.max(0,nearestSegment)][0]},{lat:coordinates[Math.min(coordinates.length-1,nearestSegment+1)][1],lon:coordinates[Math.min(coordinates.length-1,nearestSegment+1)][0]}));
-  for(let i=Math.max(1,nearestSegment+1);i<coordinates.length-1;i++){
-   const before={lat:coordinates[i-1][1],lon:coordinates[i-1][0]};
-   const current={lat:coordinates[i][1],lon:coordinates[i][0]};
-   const after={lat:coordinates[i+1][1],lon:coordinates[i+1][0]};
-   const inBearing=bearingDegrees(before,current);
-   const outBearing=bearingDegrees(current,after);
-   const delta=normalizeTurnDelta(outBearing-inBearing);
-   if(Math.abs(delta)<25)continue;
-   turnInstruction=turnInstructionFromDelta(delta);
-   headingLabel=cardinalFromBearing(outBearing);
-   turnDistanceMiles=Math.max(0,cumulativeMiles[i]-traveledMiles);
-   break;
-  }
-  const turnLabel=turnDistanceMiles<0.03?`${turnInstruction} now`:`${turnInstruction} in ${formatTravelDistance(turnDistanceMiles)}`;
-  const etaLabel=currentTime?new Date(currentTime+remainingMinutes*60000).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):'Soon';
-  return {turnLabel,headingLabel,remainingMiles,remainingMinutes,etaLabel,offRouteMiles:nearestDistanceMiles};
- },[navigationModeActive,activeMapRoute,navigationLocation,currentTime]);
- const fallbackNavigationEtaLabel=useMemo(()=>{
-  const minutes=Math.max(1,Math.round(navigationEtaMinutes??activeMapRoute?.minutes??0));
-  if(!currentTime)return 'Soon';
-  return new Date(currentTime+minutes*60000).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
- },[currentTime,navigationEtaMinutes,activeMapRoute]);
- const routeMapVisible=!!activeMapRoute&&(!!navigationTargetId||!!mapRouteOverride||!!navigationRoute);
- const mapStations=routeOnlyMode||routeMapVisible?[]:visible;
- const mapAmenities=routeOnlyMode||routeMapVisible?[]:amenities;
- const mapRiskSections=routeOnlyMode?[]:(showRisk?tripAssessment?.sections||[]:[]);
- const mapSelected=routeOnlyMode?null:selected;
  return <main className="vr-app"><Toaster richColors position="bottom-center"/><AccountAuth open={showAuth} onClose={()=>setShowAuth(false)} supabaseUrl={supabaseUrl} supabaseKey={supabaseKey}/>
  <header className="topbar"><Link href="/" className="brand"><span className="brand-mark"><Zap/></span>VoltRoute <small className="beta">BETA</small></Link><div className="account-nav">{signedIn?<><span>{account||session?.user.email||session?.user.phone||'Signed in'}</span><button type="button" onClick={()=>void supabaseBrowser({url:supabaseUrl,key:supabaseKey}).auth.signOut()}>Sign out</button></>:<button type="button" disabled={!authReady} onClick={()=>void requestGoogleSignIn()}>{authReady?'Continue with Google':'Checking account…'}</button>}</div></header>
   <div className="data-banner"><span>{loading?'Loading directory…':error?'Directory search unavailable':directoryNotice?'Saved directory listings':fetchedAt?'Community directory loaded':'Community station directory'}</span> Live availability is checked through TomTom when a matching station and operator feed are available. Otherwise status stays unconfirmed.</div>
@@ -691,7 +381,7 @@ const activeMapRoute=navigationModeActive?(navigationRoute||null):(mapRouteOverr
     <li><strong>Review your stop</strong><p>Select a charger to see its source, hours, price, live operator status when available, and nearby food or restrooms. Confirm adapter and network access in the charging network’s app before heading there.</p><a href="#charging-stop">View charging stop ↓</a></li>
    </ol>
   </details>
-  <div className={`vr-workspace${routeOnlyMode?' route-only':''}`}>
+  <div className="vr-workspace">
    <aside id="charger-search" className="vr-controls"><p className="eyebrow">Find your next stop</p><h1>Charge up.<br/>Take a break.</h1>
     <section className="mb-4 mt-[-4px] rounded-xl border border-[#4b6752] bg-[#152a1f] p-3" aria-label="Why plan with VoltRoute">
      <h2 className="mb-1 text-[1.04rem] text-[#eaf8ef]">Plan with a backup before you drive</h2>
@@ -772,22 +462,22 @@ const activeMapRoute=navigationModeActive?(navigationRoute||null):(mapRouteOverr
      <label className="form-label">Charging connector<Select value={profile.connector} onValueChange={(v:Profile['connector'])=>setProfile({...profile,connector:v})}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{['CCS1','NACS','J1772','CHAdeMO'].map(c=><SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></label><label className="form-label">Estimated range at 100% (mi)<input type="number" min={30} max={600} value={profile.range} onChange={e=>setProfile({...profile,range:Number(e.target.value)})}/></label><p className="muted-small">Catalog values are only starting estimates. Model year, trim and adapter can change range and connector. Check your vehicle and edit these fields before planning.</p><Button variant="outline" className="full" disabled={saving||!profile.name.trim()||profile.range<30||profile.range>600} onClick={()=>save('profile',profile)}>Save vehicle</Button>{accountError&&<p className="error-text">{accountError}</p>}</section>
    </aside>
   <section id="charger-map" className="vr-main" aria-label="Charger results" tabIndex={0}><div className="vr-map-tools"><label className="station-search"><Search size={18}/><input aria-label="Filter loaded stations" placeholder="Filter station name or network" value={filter} onChange={e=>setFilter(e.target.value)}/></label><label className="vr-toggle"><Switch checked={fast} onCheckedChange={setFast}/>100+ kW</label><label className="vr-toggle"><Switch checked={match} onCheckedChange={setMatch}/>My connector</label><label className="vr-toggle"><Switch checked={freeOnly} onCheckedChange={setFreeOnly}/>Listed as free</label><label className="vr-toggle"><Switch checked={openNow} onCheckedChange={setOpenNow}/>Open now</label><label className="vr-toggle"><Switch checked={allDay} onCheckedChange={setAllDay}/>24/7</label><p className="hours-filter-note">Opening-hours filters use listed schedules in station local time. They do not indicate free charging ports.</p></div>
-    {!routeOnlyMode&&<ChargeSessionAssistant station={selected} vehicleName={profile.name} enteredRate={selected?enteredRates[selected.id]||'':''}/>}
+    <ChargeSessionAssistant station={selected} vehicleName={profile.name} enteredRate={selected?enteredRates[selected.id]||'':''}/>
     <p className="muted-small">In-app map and navigation are disabled. Select a charger below and use <strong>Open in Google Maps</strong> for turn-by-turn directions.</p>
-    {!routeOnlyMode&&smartPlan&&<TripIntelligencePanel result={smartPlan} assessment={tripAssessment} now={currentTime}/>} 
-    {!routeOnlyMode&&tripAssessment&&<TripAssessmentPanel assessment={tripAssessment} showRisk={showRisk} focusedId={focusedRisk} onShowRisk={show=>{setShowRisk(show);if(!show)setFocusedRisk(null);}} onFocus={setFocusedRisk}/>} 
-    {!routeOnlyMode&&smartPlan&&<TripCostPanel result={smartPlan} now={currentTime}/>} 
-    {!routeOnlyMode&&selected&&<a className="mobile-stop-link" href="#charging-stop">View {selected.name}: details, food & restrooms ↓</a>}
-    {!routeOnlyMode&&<section className="results-panel" aria-busy={loading}><div className="results-heading"><div><p className="eyebrow">{emergency?'Emergency compatible search':center.label}</p><h2>{loading?'Finding mapped chargers…':error?'Charger search unavailable':fetchedAt?`${visible.length} mapped charging stations`:'Search for charging stations'}</h2></div>{fetchedAt&&!loading&&<small>{directoryNotice?'Saved directory retrieved':'Directory retrieved'}<br/>{evidenceTime(fetchedAt)}</small>}</div>
+    {smartPlan&&<TripIntelligencePanel result={smartPlan} assessment={tripAssessment} now={currentTime}/>} 
+    {tripAssessment&&<TripAssessmentPanel assessment={tripAssessment} showRisk={showRisk} focusedId={focusedRisk} onShowRisk={show=>{setShowRisk(show);if(!show)setFocusedRisk(null);}} onFocus={setFocusedRisk}/>} 
+    {smartPlan&&<TripCostPanel result={smartPlan} now={currentTime}/>} 
+    {selected&&<a className="mobile-stop-link" href="#charging-stop">View {selected.name}: details, food & restrooms ↓</a>}
+    <section className="results-panel" aria-busy={loading}><div className="results-heading"><div><p className="eyebrow">{emergency?'Emergency compatible search':center.label}</p><h2>{loading?'Finding mapped chargers…':error?'Charger search unavailable':fetchedAt?`${visible.length} mapped charging stations`:'Search for charging stations'}</h2></div>{fetchedAt&&!loading&&<small>{directoryNotice?'Saved directory retrieved':'Directory retrieved'}<br/>{evidenceTime(fetchedAt)}</small>}</div>
      <p className="muted-small">Up to 250 mapped results in the selected area, sorted by distance. Coverage may be incomplete. Distances are straight-line, not driving distance. Food/restrooms load when you select a charger.</p>
      {(openNow||allDay)&&!loading&&!error&&<p className="hours-filter-summary" role="status">{stations.filter(s=>stationHours.get(s.id)?.state==='unknown').length} listings have unconfirmed hours and are excluded. <button type="button" onClick={()=>{setOpenNow(false);setAllDay(false);}}>Clear hours filters</button></p>}
      {directoryNotice&&!loading&&<div className="directory-notice" role="status"><Clock3 aria-hidden="true"/><p>{directoryNotice}</p><Button variant="outline" onClick={()=>loadStations(center,searchedRadius)}>Refresh listings</Button></div>}
      {error&&<div className="error-box" role="alert"><AlertTriangle aria-hidden="true"/><p>{error}</p><Button variant="outline" onClick={()=>loadStations(center,searchedRadius)}>Retry charger search</Button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`EV charging stations near ${center.lat},${center.lon}`)}`} target="_blank" rel="noreferrer">Search this area on Google Maps ↗</a></div>}
      {!loading&&!error&&fetchedAt&&!visible.length&&<div className="empty-results">No mapped chargers match this search. Try a larger radius, another place or turn off filters. Missing map data does not mean there are no chargers.</div>}
      <div className="charger-results">{visible.map(s=>{const info=stationAvailability.get(s.id);const expanded=expandedChargerId===s.id;const activeConnector=activeConnectorByCharger[s.id]||(s.connectors[0]||'Not listed');const connectorSpeed=s.connectorPower?.[activeConnector]??s.power;return <article className={`charger-row charger-card ${selected?.id===s.id?'is-selected':''} ${expanded?'is-expanded':''}`} key={s.id}><button type="button" className="charger-card-head" onClick={()=>{setSelected(s);setExpandedChargerId(s.id);}}><span className="charger-symbol"><Zap size={20}/></span><span className="charger-info"><small>{s.network}</small><strong>{s.name}</strong><span>{s.distance.toFixed(1)} mi · {portsLabel(info)}</span><small>{liveStatusLabel(info)}</small></span><span className="charger-numbers"><strong>{connectorSpeed?`${connectorSpeed} kW`:'Speed not listed'}</strong><span>{activeConnector}</span><small className={`hours-badge hours-${stationHours.get(s.id)?.state||'unknown'}`}>{stationHours.get(s.id)?.label||'Checking hours…'}</small></span></button>{expanded&&<div className="charger-card-body"><div className="charger-card-stats"><span><strong>Distance</strong><small>{s.distance.toFixed(1)} mi</small></span><span><strong>Available ports</strong><small>{portsLabel(info).replace('Ports: ','')}</small></span><span><strong>Connector type</strong><small>{activeConnector}</small></span><span><strong>Charging speed</strong><small>{connectorSpeed?`${connectorSpeed} kW`:'Not listed'}</small></span><span><strong>Live status</strong><small>{info?.label||'Unconfirmed'}</small></span></div><div className="charger-port-row">{(s.connectors.length?s.connectors:['Not listed']).map(connector=><button key={connector} type="button" className={`connector-chip ${activeConnector===connector?'is-active':''}`} onClick={()=>setActiveConnectorByCharger(current=>({...current,[s.id]:connector}))}>{connector}</button>)}</div><div className="charger-card-actions"><Button asChild variant="outline"><a href={stationLookup(s)} target="_blank" rel="noreferrer"><Navigation/>Open in Google Maps</a></Button></div></div>}</article>;})}</div>
-    </section>}
+    </section>
    </section>
-   {!routeOnlyMode&&<aside id="charging-stop" tabIndex={-1} className="vr-details">{selected?<><p className="eyebrow">Charging stop</p><h2>{selected.name}</h2><p className="muted-small">{selected.address||`${selected.lat.toFixed(4)}, ${selected.lon.toFixed(4)}`}</p><StationEvidence station={selected} info={stationAvailability.get(selected.id)!} fetchedAt={fetchedAt}/><section className="live-refresh"><div><strong>Live operator check</strong><p>{liveLoading?'Checking TomTom availability…':liveError?liveError:stationAvailability.get(selected.id)?.freshness==='live'?stationAvailability.get(selected.id)?.label:'No live port count confirmed for this charger.'}</p></div><Button type="button" variant="outline" disabled={liveLoading} onClick={()=>void refreshLive(selected)}>{liveLoading?'Checking…':'Refresh live status'}</Button></section><div className={`compatibility-alert ${connectorMatch?'is-compatible':'is-incompatible'}`}>{connectorMatch?<CheckCircle2/>:<AlertTriangle/>}<div><strong>{connectorMatch?'Connector type matches':'Connector match unconfirmed'}</strong><span>Your {profile.name} uses {profile.connector}. Station lists {selected.connectors.join(', ')||'no connector details'}. Check model-year, adapter and network access requirements.</span></div></div><dl className="station-facts"><div><dt>Driving distance</dt><dd>{selectedRoadBusy?'Calculating…':selectedRoad?`${selectedRoad.miles.toFixed(1)} mi · ${Math.round(selectedRoad.minutes)} min`:'Unavailable'}</dd></div><div><dt>Map distance</dt><dd>{selected.distance.toFixed(1)} mi straight-line</dd></div><div><dt>Power</dt><dd>{selected.power?`${selected.power} kW`:'Not published'}</dd></div><div><dt>Connectors</dt><dd>{selected.connectors.join(', ')||'Not published'}</dd></div><div><dt>Access</dt><dd>{selected.access==='Access not listed'?'Public access not confirmed':selected.access}</dd></div></dl><StationHours sourceUrl={selected.sourceUrl} hours={selected.hours} info={stationHours.get(selected.id)} checkedAt={hoursClock}/><StationPrice key={selected.id} station={selected} info={stationPrices.get(selected.id)!} range={profile.range} connector={profile.connector} enteredRate={enteredRates[selected.id]||''} onRateChange={value=>setEnteredRates(previous=>({...previous,[selected.id]:value}))}/>{signedIn?<section className="driver-report"><h3>Your station report</h3><p>{reports[selected.id]?`Your latest report: ${reports[selected.id].status} · ${evidenceTime(reports[selected.id].reportedAt)}`:'No report from you yet. Record the condition you observed at this station.'}</p><p className="muted-small">Saved privately to your account. Reports are recent for 24 hours and do not confirm a free port.</p><div><Button variant="outline" disabled={saving} onClick={()=>report('working')}>Working</Button><Button variant="outline" disabled={saving} onClick={()=>report('busy')}>Busy</Button><Button variant="outline" disabled={saving} onClick={()=>report('broken')}>Broken</Button></div></section>:<section className="account-prompt"><p>Sign in to save a private station report or share a community observation.</p><Button type="button" variant="outline" onClick={()=>void requestGoogleSignIn()}>Continue with Google</Button></section>}
+   <aside id="charging-stop" tabIndex={-1} className="vr-details">{selected?<><p className="eyebrow">Charging stop</p><h2>{selected.name}</h2><p className="muted-small">{selected.address||`${selected.lat.toFixed(4)}, ${selected.lon.toFixed(4)}`}</p><StationEvidence station={selected} info={stationAvailability.get(selected.id)!} fetchedAt={fetchedAt}/><section className="live-refresh"><div><strong>Live operator check</strong><p>{liveLoading?'Checking TomTom availability…':liveError?liveError:stationAvailability.get(selected.id)?.freshness==='live'?stationAvailability.get(selected.id)?.label:'No live port count confirmed for this charger.'}</p></div><Button type="button" variant="outline" disabled={liveLoading} onClick={()=>void refreshLive(selected)}>{liveLoading?'Checking…':'Refresh live status'}</Button></section><div className={`compatibility-alert ${connectorMatch?'is-compatible':'is-incompatible'}`}>{connectorMatch?<CheckCircle2/>:<AlertTriangle/>}<div><strong>{connectorMatch?'Connector type matches':'Connector match unconfirmed'}</strong><span>Your {profile.name} uses {profile.connector}. Station lists {selected.connectors.join(', ')||'no connector details'}. Check model-year, adapter and network access requirements.</span></div></div><dl className="station-facts"><div><dt>Driving distance</dt><dd>{selectedRoadBusy?'Calculating…':selectedRoad?`${selectedRoad.miles.toFixed(1)} mi · ${Math.round(selectedRoad.minutes)} min`:'Unavailable'}</dd></div><div><dt>Map distance</dt><dd>{selected.distance.toFixed(1)} mi straight-line</dd></div><div><dt>Power</dt><dd>{selected.power?`${selected.power} kW`:'Not published'}</dd></div><div><dt>Connectors</dt><dd>{selected.connectors.join(', ')||'Not published'}</dd></div><div><dt>Access</dt><dd>{selected.access==='Access not listed'?'Public access not confirmed':selected.access}</dd></div></dl><StationHours sourceUrl={selected.sourceUrl} hours={selected.hours} info={stationHours.get(selected.id)} checkedAt={hoursClock}/><StationPrice key={selected.id} station={selected} info={stationPrices.get(selected.id)!} range={profile.range} connector={profile.connector} enteredRate={enteredRates[selected.id]||''} onRateChange={value=>setEnteredRates(previous=>({...previous,[selected.id]:value}))}/>{signedIn?<section className="driver-report"><h3>Your station report</h3><p>{reports[selected.id]?`Your latest report: ${reports[selected.id].status} · ${evidenceTime(reports[selected.id].reportedAt)}`:'No report from you yet. Record the condition you observed at this station.'}</p><p className="muted-small">Saved privately to your account. Reports are recent for 24 hours and do not confirm a free port.</p><div><Button variant="outline" disabled={saving} onClick={()=>report('working')}>Working</Button><Button variant="outline" disabled={saving} onClick={()=>report('busy')}>Busy</Button><Button variant="outline" disabled={saving} onClick={()=>report('broken')}>Broken</Button></div></section>:<section className="account-prompt"><p>Sign in to save a private station report or share a community observation.</p><Button type="button" variant="outline" onClick={()=>void requestGoogleSignIn()}>Continue with Google</Button></section>}
     <section className="charger-actions-highlight" aria-label="Charger quick actions">
      <p className="muted-small">Hours may change. Check the station listing before travelling.</p>
      <h3>Quick actions</h3>
@@ -803,7 +493,7 @@ const activeMapRoute=navigationModeActive?(navigationRoute||null):(mapRouteOverr
      {amenitiesLoading&&<p role="status">Looking for nearby places…</p>}{amenityError&&<div className="error-box"><p>{amenityError}</p><Button variant="outline" onClick={()=>setAmenityRetry(n=>n+1)}>Retry nearby search</Button></div>}
      {!amenitiesLoading&&!amenityError&&<Tabs defaultValue="food"><TabsList className="vr-tabs"><TabsTrigger value="food">Food ({restaurantCount})</TabsTrigger><TabsTrigger value="restroom">Restrooms ({restroomCount})</TabsTrigger></TabsList>{(['food','restroom'] as const).map(kind=><TabsContent key={kind} value={kind}>{!amenities.some(a=>a.kind===kind)&&<p className="muted-small">No {kind==='food'?'food places':'restrooms'} mapped within ½ mile. This means unknown, not unavailable.</p>}{amenities.filter(a=>a.kind===kind).map(a=><article className="amenity-card" key={a.id}><div className="amenity-heading">{kind==='food'?<Utensils size={18}/>:<Toilet size={18}/>}<h3>{a.name}</h3><strong>{a.distance.toFixed(2)} mi</strong></div><p>{a.hours}</p><p>Access: {a.access}{kind==='restroom'?` · Fee: ${a.fee}`:''}</p>{kind==='restroom'&&<p>Wheelchair access: {a.wheelchair}</p>}<p className="muted-small">Open now: unverified</p><div className="amenity-links"><a href={directions(a,true)} target="_blank" rel="noreferrer">Walking directions ↗</a><a href={a.sourceUrl} target="_blank" rel="noreferrer">Source ↗</a></div></article>)}</TabsContent>)}</Tabs>}
     </section><div className="source-note"><a href={selected.sourceUrl} target="_blank" rel="noreferrer">View station source ↗</a>{selected.website&&<a href={selected.website} target="_blank" rel="noreferrer">Operator website ↗</a>}<p>{selected.updated?`Map record edited ${new Date(selected.updated).toLocaleDateString()}`:'Record edit date not listed'}. This is not the last successful charge.</p></div>
-   </>:<div className="detail-empty"><MapPin/><h2>Select a charger</h2><p>See its mapped details, nearby food and restrooms.</p></div>}</aside>}
+   </>:<div className="detail-empty"><MapPin/><h2>Select a charger</h2><p>See its mapped details, nearby food and restrooms.</p></div>}</aside>
   </div><footer className="vr-footer"><p>Map and place data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors (ODbL)</a>. Place search: Photon. Road routing: OSRM. Live charging availability may use TomTom when a reliable station match is available. Community services have incomplete coverage and no availability guarantee. Do not rely on this beta for emergency charging.</p><nav aria-label="VoltRoutes legal and information"><a href={WORKER_ABOUT_URL}>About</a><a href={WORKER_DATA_SOURCES_URL}>Data Sources</a><a href={WORKER_PRIVACY_URL}>Privacy</a><a href={WORKER_TERMS_URL}>Terms</a></nav></footer>
  </main>;
 }
