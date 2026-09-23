@@ -51,6 +51,22 @@ function hasRenderableRoute(route:RoadRoute|null|undefined):route is RoadRoute{
  return geometryMiles>.01;
 }
 async function api<T>(path:string,init?:RequestInit,accessToken?:string):Promise<T>{const headers=new Headers(init?.headers);if(accessToken)headers.set('Authorization',`Bearer ${accessToken}`);const response=await fetch(path,{...init,headers});const data=await response.json() as T & {error?:string};if(!response.ok)throw new Error(data.error || 'Something went wrong. Please try again.');return data;}
+function wait(ms:number){return new Promise(resolve=>window.setTimeout(resolve,ms));}
+async function fetchStationsWithRetry(point:Point,chosenRadius:string,signal:AbortSignal){
+ const endpoint=`/api/explore?action=stations&lat=${point.lat}&lon=${point.lon}&radius=${chosenRadius}`;
+ let lastError:unknown=null;
+ for(let attempt=0;attempt<2;attempt++){
+  if(signal.aborted)throw new DOMException('Request aborted.','AbortError');
+  try{
+   return await api<DirectorySnapshot<Station[]>>(endpoint,{signal,cache:'no-store'});
+  }catch(error){
+   lastError=error;
+   if(signal.aborted)throw error;
+   if(attempt===0)await wait(350);
+  }
+ }
+ throw lastError instanceof Error?lastError:new Error('Charging map listings could not be loaded right now.');
+}
 function directions(p:{lat:number;lon:number},walking=false){return `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}&travelmode=${walking?'walking':'driving'}`;}
 function tripDirections(origin:{lat:number;lon:number},destination:{lat:number;lon:number}){return `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lon}&destination=${destination.lat},${destination.lon}&travelmode=driving`;}
 function googleEvSearch(point:{lat:number;lon:number}){return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`EV charging stations near ${point.lat},${point.lon}`)}`;}
@@ -240,7 +256,7 @@ const drivingDistanceByStation=useMemo(()=>selected&&selectedRoad?{[selected.id]
   setSmartPlan(null);const id=++requestId.current;setLoading(!cached);setError('');setCenter(point);setSearchedRadius(chosenRadius);
   if(cached){setStations(cached.data);setFetchedAt(cached.fetchedAt);setDirectoryNotice(cached.notice||'Using recent listings while live data refreshes.');setSelected(current=>cached.data.find(s=>s.id===current?.id)||cached.data[0]||null);}
   else setDirectoryNotice('');
-  try{const r=await api<DirectorySnapshot<Station[]>>(`/api/explore?action=stations&lat=${point.lat}&lon=${point.lon}&radius=${chosenRadius}`,{signal:controller.signal});if(id!==requestId.current||controller.signal.aborted)return;stationSnapshotCache.current.set(cacheKey,r);if(typeof window!=='undefined'){try{window.localStorage.setItem(`voltroute:stations:${cacheKey}`,JSON.stringify(r));}catch{/* localStorage can fail in private mode/quota */}}setStations(r.data);setFetchedAt(r.fetchedAt);setDirectoryNotice(r.notice||'');setSelected(current=>r.data.find(s=>s.id===current?.id)||r.data[0]||null);}
+  try{const r=await fetchStationsWithRetry(point,chosenRadius,controller.signal);if(id!==requestId.current||controller.signal.aborted)return;stationSnapshotCache.current.set(cacheKey,r);if(typeof window!=='undefined'){try{window.localStorage.setItem(`voltroute:stations:${cacheKey}`,JSON.stringify(r));}catch{/* localStorage can fail in private mode/quota */}}setStations(r.data);setFetchedAt(r.fetchedAt);setDirectoryNotice(r.notice||'');setSelected(current=>r.data.find(s=>s.id===current?.id)||r.data[0]||null);}
   catch(e){if(id===requestId.current&&!controller.signal.aborted){if(cached){setError('');setDirectoryNotice('Using recent listings right now. Tap refresh to try again.');}else setError((e as Error).message);}}
   finally{if(id===requestId.current&&!controller.signal.aborted)setLoading(false);}
  }
