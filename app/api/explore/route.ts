@@ -38,10 +38,21 @@ export async function GET(request:Request) {
   const settings=env as unknown as Record<string,string>;
   if(action==='search') {
     const text=z.string().trim().min(2).max(160).parse(q.get('q'));
-    const url=new URL('/api/',settings.PHOTON_URL || 'https://photon.komoot.io');url.search=new URLSearchParams({q:text,limit:'6',countrycode:'US',lang:'en'}).toString();
+    const url=new URL('/api/',settings.PHOTON_URL || 'https://photon.komoot.io');url.search=new URLSearchParams({q:text,limit:'8',lang:'en'}).toString();
     const result=await cached(`photon:v1:${text.toLowerCase()}`,'photon',86400,async()=> {
       const json=await fetchJson(url.href) as {features:{geometry:{coordinates:number[]};properties:Record<string,string>}[]};
-      return json.features.filter(f=>f.geometry?.coordinates?.length===2 && (f.properties.countrycode||'').toUpperCase()==='US').map(f=>({lat:f.geometry.coordinates[1],lon:f.geometry.coordinates[0],label:[f.properties.name,f.properties.city,f.properties.state,f.properties.postcode].filter((v,i,a)=>v&&a.indexOf(v)===i).join(', ')} satisfies Point));
+      return json.features
+        .filter(f=>f.geometry?.coordinates?.length===2)
+        .map(f=>{
+          const parts=[
+            f.properties.name,
+            f.properties.city,
+            f.properties.state,
+            f.properties.country,
+            f.properties.postcode,
+          ].filter((value,index,list)=>value&&list.indexOf(value)===index);
+          return {lat:f.geometry.coordinates[1],lon:f.geometry.coordinates[0],label:parts.join(', ')} satisfies Point;
+        });
     });return Response.json(result);
   }
   if(action==='live-station') {
