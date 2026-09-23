@@ -5,7 +5,6 @@ export function tomtomReferers(settings: Record<string, string | undefined>) {
   return [...new Set([
     settings.TOMTOM_REFERER?.trim(),
     WORKER_SITE_URL,
-    'https://voltroutes.com/',
   ].filter(Boolean) as string[])];
 }
 
