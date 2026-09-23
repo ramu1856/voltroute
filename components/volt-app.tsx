@@ -205,7 +205,7 @@ const drivingDistanceByStation=useMemo(()=>selected&&selectedRoad?{[selected.id]
       if(raw){
         const parsed=JSON.parse(raw) as DirectorySnapshot<Station[]>;
         if(Array.isArray(parsed.data)&&typeof parsed.fetchedAt==='string'){
-          cached={...parsed,notice:parsed.notice||'Showing cached listings while the latest map data refreshes.'};
+          cached={...parsed,notice:parsed.notice||'Using recent listings while live data refreshes.'};
           stationSnapshotCache.current.set(cacheKey,cached);
         }
       }
@@ -220,10 +220,10 @@ const drivingDistanceByStation=useMemo(()=>selected&&selectedRoad?{[selected.id]
   setAmenities([]);
   setSelectedRoad(null);
   setSmartPlan(null);const id=++requestId.current;setLoading(!cached);setError('');setCenter(point);setSearchedRadius(chosenRadius);
-  if(cached){setStations(cached.data);setFetchedAt(cached.fetchedAt);setDirectoryNotice(cached.notice||'Showing cached listings while the latest map data refreshes.');setSelected(current=>cached.data.find(s=>s.id===current?.id)||cached.data[0]||null);}
+  if(cached){setStations(cached.data);setFetchedAt(cached.fetchedAt);setDirectoryNotice(cached.notice||'Using recent listings while live data refreshes.');setSelected(current=>cached.data.find(s=>s.id===current?.id)||cached.data[0]||null);}
   else setDirectoryNotice('');
   try{const r=await api<DirectorySnapshot<Station[]>>(`/api/explore?action=stations&lat=${point.lat}&lon=${point.lon}&radius=${chosenRadius}`,{signal:controller.signal});if(id!==requestId.current||controller.signal.aborted)return;stationSnapshotCache.current.set(cacheKey,r);if(typeof window!=='undefined'){try{window.localStorage.setItem(`voltroute:stations:${cacheKey}`,JSON.stringify(r));}catch{/* localStorage can fail in private mode/quota */}}setStations(r.data);setFetchedAt(r.fetchedAt);setDirectoryNotice(r.notice||'');setSelected(current=>r.data.find(s=>s.id===current?.id)||r.data[0]||null);}
-  catch(e){if(id===requestId.current&&!controller.signal.aborted){if(cached){setError('');setDirectoryNotice('Showing cached listings because the latest refresh failed. Retry in a moment.');}else setError((e as Error).message);}}
+  catch(e){if(id===requestId.current&&!controller.signal.aborted){if(cached){setError('');setDirectoryNotice('Using recent listings right now. Tap refresh to try again.');}else setError((e as Error).message);}}
   finally{if(id===requestId.current&&!controller.signal.aborted)setLoading(false);}
  }
  async function refreshLive(station:Station){

@@ -29,7 +29,7 @@ export async function loadDirectory<T>(io: CacheIO<T>): Promise<DirectorySnapsho
   try { data = await io.refresh(); }
   catch (error) {
     if (saved && error instanceof ServiceError && (error.status === 429 || error.status >= 500)) {
-      return { ...saved, stale: true, notice: 'Showing previously retrieved map listings because the directory could not be refreshed. Check the retrieval time and confirm details before travelling.' };
+      return { ...saved, stale: true, notice: 'Using recently saved listings while live map data refreshes.' };
     }
     throw error;
   }
