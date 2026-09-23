@@ -98,7 +98,7 @@ export async function GET(request:Request) {
   }
   if(action==='stations' || action==='amenities') {
     const point=coords.parse({lat:q.get('lat')??undefined,lon:q.get('lon')??undefined});
-    const radius=action==='stations'?z.coerce.number().min(160934).max(402336).parse(q.get('radius')||'160934'):805;
+    const radius=action==='stations'?z.coerce.number().min(40234).max(402336).parse(q.get('radius')||'80467'):805;
     const lat=Number(point.lat.toFixed(4)),lon=Number(point.lon.toFixed(4));
     const area=`(around:${radius},${lat},${lon})`;
     const query=action==='stations'?`[out:json][timeout:12][maxsize:67108864];nwr[amenity=charging_station]${area};out center tags 300 qt;`:`[out:json][timeout:10];(nwr[amenity~"^(restaurant|cafe|fast_food|food_court|toilets)$"]${area};nwr[toilets=yes]${area};nwr[shop~"^(supermarket|convenience|mall|department_store)$"]${area};);out center tags qt;`;
