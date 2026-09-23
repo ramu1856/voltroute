@@ -18,11 +18,15 @@ import { evaluateAvailability, ageLabel } from '@/lib/station-evidence';
 import { tripBudget } from '@/lib/trip-budget';
 import { predictWaitForecast, waitWindowLabel } from '@/lib/wait-forecast';
 import { CompetitiveBenchmark } from './competitive-benchmark';
+import { formatCurrency, usdToDisplay } from '@/lib/currency-display';
 
 type Props = {
   result: SmartStopResult;
   assessment: TripAssessment | null;
   now: number;
+  displayCurrency: string;
+  displayLocale: string;
+  usdFxRate: number;
 };
 
 function duration(minutes: number | null) {
@@ -33,13 +37,13 @@ function duration(minutes: number | null) {
   return hours ? `${hours}h ${mins}m` : `${mins} min`;
 }
 
-function dollars(value: number | null) {
+function money(value: number | null, displayCurrency: string, displayLocale: string, usdFxRate: number) {
   return value === null
     ? 'Unavailable'
-    : value.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    : formatCurrency(usdToDisplay(value, usdFxRate), displayLocale, displayCurrency);
 }
 
-export function TripIntelligencePanel({ result, assessment, now }: Props) {
+export function TripIntelligencePanel({ result, assessment, now, displayCurrency, displayLocale, usdFxRate }: Props) {
   const stop = result.selected;
   const backup = stop?.backup ?? null;
   const availability = stop
@@ -212,7 +216,7 @@ export function TripIntelligencePanel({ result, assessment, now }: Props) {
               {noChargeNeeded
                 ? 'No in-trip charging cost.'
                 : price
-                  ? `${price.rate === null ? 'No usable $/kWh rate' : `$${price.rate.toFixed(4)}/kWh`} · ${price.source}`
+                  ? `${price.rate === null ? 'No usable per-kWh rate' : `${formatCurrency(usdToDisplay(price.rate, usdFxRate), displayLocale, displayCurrency, 2, 4)}/kWh`} · ${price.source}`
                   : 'No usable price source for this stop.'}
             </small>
           </article>
@@ -260,14 +264,14 @@ export function TripIntelligencePanel({ result, assessment, now }: Props) {
           <article>
             <BadgeDollarSign />
             <span>12. Total charging cost</span>
-            <strong>{noChargeNeeded ? '$0.00' : dollars(budget.total)}</strong>
+            <strong>{noChargeNeeded ? money(0, displayCurrency, displayLocale, usdFxRate) : money(budget.total, displayCurrency, displayLocale, usdFxRate)}</strong>
             <small>
               {noChargeNeeded
                 ? 'No additional charging is planned.'
                 : budget.total !== null
                   ? 'Estimated charging energy for the complete planned trip.'
                   : budget.knownSubtotal !== null
-                    ? `Known next-stop subtotal: ${dollars(budget.knownSubtotal)}. Full trip cost is not available yet.`
+                    ? `Known next-stop subtotal: ${money(budget.knownSubtotal, displayCurrency, displayLocale, usdFxRate)}. Full trip cost is not available yet.`
                     : budget.message}
             </small>
           </article>
